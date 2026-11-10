@@ -1,4 +1,4 @@
-import { X } from '@phosphor-icons/react';
+import { X, YoutubeLogo } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 import type { Video } from '../core/models';
 import { dematerialize, materialize } from '../lib/motion';
@@ -70,9 +70,23 @@ export function TrailerDialog({ videos, initial, title, origin, onClose }: Props
             <p className="truncate text-sm text-white/70">{title}</p>
             <p className="truncate font-semibold">{current.name}</p>
           </div>
-          <IconButton label="Close" onClick={() => void close()} className="!bg-white/10 !text-white hover:!bg-white/20" variant="plain">
-            <X size={18} weight="bold" aria-hidden />
-          </IconButton>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* Fallback for browsers or extensions that strip the Referer header,
+                which makes YouTube refuse the embed with Error 153. */}
+            <a
+              href={`https://www.youtube.com/watch?v=${encodeURIComponent(current.key)}`}
+              target="_blank"
+              rel="noopener"
+              className="press inline-flex h-10 items-center gap-2 rounded-full bg-white/10 px-4 text-sm font-medium text-white hover:bg-white/20"
+            >
+              <YoutubeLogo size={18} weight="fill" aria-hidden />
+              <span className="hidden sm:inline">Watch on YouTube</span>
+              <span className="sm:hidden">YouTube</span>
+            </a>
+            <IconButton label="Close" onClick={() => void close()} className="!bg-white/10 !text-white hover:!bg-white/20" variant="plain">
+              <X size={18} weight="bold" aria-hidden />
+            </IconButton>
+          </div>
         </div>
         <div className="relative aspect-video w-full overflow-hidden rounded-[var(--radius-panel)] bg-black shadow-2xl ring-1 ring-white/10">
           <iframe
