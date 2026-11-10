@@ -1,4 +1,4 @@
-import { X, YoutubeLogo } from '@phosphor-icons/react';
+import { ArrowsOut, X, YoutubeLogo } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 import type { Video } from '../core/models';
 import { dematerialize, materialize } from '../lib/motion';
@@ -22,6 +22,19 @@ export function TrailerDialog({ videos, initial, title, origin, onClose }: Props
   const panel = useRef<HTMLDivElement>(null);
   const [current, setCurrent] = useState(initial);
   const closing = useRef(false);
+  const frame = useRef<HTMLIFrameElement>(null);
+  const canFullscreen = typeof document !== 'undefined' && document.fullscreenEnabled;
+
+  // YouTube's own fullscreen button is turned off (fs=0) so it lives in one
+  // predictable place: our top bar. Fullscreening the iframe keeps YouTube's
+  // controls usable inside it.
+  const fullscreen = async () => {
+    try {
+      await frame.current?.requestFullscreen();
+    } catch {
+      /* Blocked by the browser or a permissions policy; stay windowed. */
+    }
+  };
   const list = videos.filter((v) => v.site === 'YouTube').slice(0, 8);
 
   useEffect(() => {
@@ -57,6 +70,11 @@ export function TrailerDialog({ videos, initial, title, origin, onClose }: Props
       aria-label={`${title} videos`}
       onCancel={(e) => {
         e.preventDefault();
+        // Esc while fullscreen should only leave fullscreen, not close the dialog.
+        if (document.fullscreenElement) {
+          void document.exitFullscreen().catch(() => {});
+          return;
+        }
         void close();
       }}
       onClick={(e) => {
@@ -83,6 +101,11 @@ export function TrailerDialog({ videos, initial, title, origin, onClose }: Props
               <span className="hidden sm:inline">Watch on YouTube</span>
               <span className="sm:hidden">YouTube</span>
             </a>
+            {canFullscreen && (
+              <IconButton label="Full screen" onClick={() => void fullscreen()} className="!bg-white/10 !text-white hover:!bg-white/20" variant="plain">
+                <ArrowsOut size={18} weight="bold" aria-hidden />
+              </IconButton>
+            )}
             <IconButton label="Close" onClick={() => void close()} className="!bg-white/10 !text-white hover:!bg-white/20" variant="plain">
               <X size={18} weight="bold" aria-hidden />
             </IconButton>
@@ -91,8 +114,9 @@ export function TrailerDialog({ videos, initial, title, origin, onClose }: Props
         <div className="relative aspect-video w-full overflow-hidden rounded-[var(--radius-panel)] bg-black shadow-2xl ring-1 ring-white/10">
           <iframe
             key={current.key}
+            ref={frame}
             className="absolute inset-0 size-full"
-            src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(current.key)}?autoplay=1&rel=0&modestbranding=1&playsinline=1`}
+            src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(current.key)}?autoplay=1&rel=0&modestbranding=1&playsinline=1&fs=0`}
             title={current.name}
             allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
             allowFullScreen
