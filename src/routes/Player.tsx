@@ -33,11 +33,14 @@ import NotFound from './NotFound';
 
 /**
  * Player. VidFast plays the media in an iframe but ignores playback commands,
- * and clicks inside it open ad pop-ups. So the embed never receives a pointer
- * event or focus, and our controls drive it through its URL: each play, seek or
- * subtitle change starts a new "session" (a fresh embed load at the right second
- * with autoPlay), and pause ends the session. The events VidFast posts back
- * keep the clock, progress and up-next honest.
+ * and clicks inside it open ad pop-ups (its ad script listens for mousedown). So the
+ * embed never receives a pointer event, and our controls drive it through its URL:
+ * each play, seek or subtitle change starts a new "session" (a fresh embed load at
+ * the right second with autoPlay), and pause ends the session. Its own keyboard
+ * shortcuts do work and never trigger ads, so while it plays it is given keyboard
+ * focus: the viewer's real keys (Space, arrows, M for sound) then act on it directly.
+ * Pages cannot send synthetic keys into a cross-origin frame, so our buttons cannot
+ * use that path. The events VidFast posts back keep the clock, progress and up-next honest.
  */
 export default function Player() {
   const { type, id, season, episode } = useParams();
@@ -103,13 +106,25 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
 
   // Playback state. `wantPlay` is what the viewer asked for; `status.playing` is what the embed reports.
   const [session, setSession] = useState<Session>(() => ({ n: 0, at: resumedFrom > 0 ? resumedFrom : null }));
-  const [wantPlay, setWantPlay] = useState(true);
+  // Opened before any interaction with the page (a direct link or refresh): wait for a
+  // click, so the embed is allowed to start with sound where the browser permits it.
+  const [wantPlay, setWantPlay] = useState(() => {
+    try {
+      return navigator.userActivation?.hasBeenActive ?? true;
+    } catch {
+      return true;
+    }
+  });
   const [pos, setPos] = useState(resumedFrom);
   const [dur, setDur] = useState(0);
   const [sub, setSubState] = useState<string | null>(readSub);
   const [pendingSeek, setPendingSeek] = useState<number | null>(null);
   const [problem, setProblem] = useState<'unavailable' | 'stuck' | null>(null);
   const [loadedN, setLoadedN] = useState<number | null>(null);
+  // The session whose embed has reported `play` at least once.
+  const [playedN, setPlayedN] = useState<number | null>(null);
+  const sessionRef = useRef(session.n);
+  sessionRef.current = session.n;
 
   const src = vidfastUrl(type, id, season, episode, { sub, startAt: session.at });
   const loaded = loadedN === session.n;
@@ -129,6 +144,7 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
       if (title) progress.describe(type, id, { title: title.title, poster_path: title.posterPath, backdrop_path: title.backdropPath });
     },
     onEvent: (event, { currentTime, duration: total }) => {
+      if (event === 'play') setPlayedN(sessionRef.current);
       if (total > 0) setDur(total);
       // A fresh embed can report 0 before it reaches startAt; only trust positions past the first second.
       if (currentTime >= 1 || event === 'ended') setPos(event === 'ended' ? total : currentTime);
@@ -165,8 +181,11 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
     return () => window.clearTimeout(t);
   }, [pendingSeek, startSession]);
 
-  // "Starting" covers everything between asking to play and the embed actually playing.
-  const starting = wantPlay && !problem && !status.playing;
+  // "Starting" covers everything between asking to play and the embed's first `play` event.
+  const hasPlayed = playedN === session.n;
+  const starting = wantPlay && !problem && !hasPlayed;
+  // Playing now, as reported; paused from the embed's own keys leaves the embed loaded.
+  const playingNow = wantPlay && hasPlayed && status.playing;
 
   // A loaded embed that never reports is stuck; offer a retry rather than leaving dead controls.
   useEffect(() => {
@@ -193,7 +212,7 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
     idleTimer.current = window.setTimeout(() => setIdle(true), 3000);
   }, []);
   useEffect(() => () => window.clearTimeout(idleTimer.current), []);
-  const chromeVisible = !wantPlay || starting || !!problem || !idle || menu !== null || sheet || drag !== null;
+  const chromeVisible = !playingNow || !!problem || !idle || menu !== null || sheet || drag !== null;
 
   // The page reserves a scrollbar gutter (scrollbar-gutter: stable), which would
   // shift this full-viewport overlay left of true centre. Release it while the player is open.
@@ -214,8 +233,9 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
     return () => document.removeEventListener('fullscreenchange', onFs);
   }, []);
 
-  // State transition: the embed fades in over the still once it is actually playing.
-  const showing = wantPlay && status.playing;
+  // State transition: the embed fades in over the still once it has started; it stays
+  // visible if paused from its own keys, showing the real frame.
+  const showing = wantPlay && hasPlayed;
   useEffect(() => {
     const el = frameRef.current;
     if (!showing || !el) return;
@@ -245,7 +265,7 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
   const clampTime = (t: number) => Math.max(0, dur ? Math.min(dur - 1, t) : t);
 
   const togglePlay = () => {
-    if (wantPlay) {
+    if (playingNow) {
       // Pausing unloads the embed; the last reported position is kept for the next play.
       setWantPlay(false);
       setPendingSeek(null);
@@ -298,7 +318,7 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
   };
 
   // "Resumed at" chip: rises in once playback starts from the saved point, leaves after 8s.
-  const showChip = resumedFrom > 0 && session.n === 0 && status.playing && !chipGone;
+  const showChip = resumedFrom > 0 && session.at === resumedFrom && playingNow && !chipGone;
   useEffect(() => {
     if (!showChip) return;
     const anim = chipRef.current ? enter(chipRef.current, { distance: 12 }) : null;
@@ -319,7 +339,36 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
     };
   }, [upNextShown]);
 
-  // Keyboard shortcuts, YouTube/Apple TV style. The embed can never take focus, so keys always reach us.
+  // Keyboard focus goes to the embed while it plays and nothing of ours is open, so the
+  // viewer's keys act on it natively. Clicking anywhere on our page takes focus back.
+  const [keysInEmbed, setKeysInEmbed] = useState(false);
+  useEffect(() => {
+    if (!playingNow || menu !== null || sheet || problem) return;
+    frameRef.current?.focus({ preventScroll: true });
+  }, [playingNow, menu, sheet, problem, session.n]);
+  useEffect(() => {
+    const check = () => window.setTimeout(() => setKeysInEmbed(!!frameRef.current && document.activeElement === frameRef.current), 0);
+    window.addEventListener('blur', check);
+    window.addEventListener('focus', check);
+    document.addEventListener('focusin', check);
+    return () => {
+      window.removeEventListener('blur', check);
+      window.removeEventListener('focus', check);
+      document.removeEventListener('focusin', check);
+    };
+  }, []);
+  // Sound hint: the embed started muted (the browser refused sound); M inside it unmutes without a click.
+  const mutedHint = playingNow && keysInEmbed && status.muted === true;
+  const hintRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!mutedHint || !hintRef.current) return;
+    const anim = enter(hintRef.current, { distance: -8 });
+    return () => {
+      anim?.revert();
+    };
+  }, [mutedHint]);
+
+  // Keyboard shortcuts, YouTube/Apple TV style. While the embed has focus, keys go to it instead.
   const current = { togglePlay, skip, toggleFullscreen, type, nextHref };
   const keys = useRef(current);
   keys.current = current;
@@ -358,7 +407,7 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
   const label = title?.title ?? '';
   const subtitle = type === 'tv' ? `S${season} E${episode}${ep ? `  ${ep.name}` : ''}` : title?.year ? String(title.year) : '';
   const still = ep?.stillPath ?? title?.backdropPath ?? null;
-  const transportLabel = wantPlay ? 'Pause' : 'Play';
+  const transportLabel = playingNow ? 'Pause' : 'Play';
 
   const nextLink = nextHref && (
     <Link
@@ -396,11 +445,10 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
             <iframe
               ref={frameRef}
               key={session.n}
-              title={label ? `${label} video player` : 'Video player'}
+              title={label ? `${label} video player. Space, arrow keys and M work here.` : 'Video player'}
               src={src}
+              // Focusable only by script (see keysInEmbed); never by Tab or pointer.
               tabIndex={-1}
-              // Hidden from assistive tech too: activating anything inside the embed can open ads, and our controls replace all of it.
-              aria-hidden
               onLoad={() => setLoadedN(session.n)}
               allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
               referrerPolicy="origin"
@@ -490,7 +538,7 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
               </span>
             </ControlButton>
             <ControlButton label={transportLabel} size="xl" onClick={togglePlay} className="bg-white/14 backdrop-blur-xl hover:bg-white/20">
-              {wantPlay ? <Pause size={34} weight="fill" aria-hidden /> : <Play size={34} weight="fill" aria-hidden />}
+              {playingNow ? <Pause size={34} weight="fill" aria-hidden /> : <Play size={34} weight="fill" aria-hidden />}
             </ControlButton>
             <ControlButton label="Forward 10 seconds" size="lg" onClick={() => skip(10)} className="bg-black/25 backdrop-blur-md">
               <ArrowClockwise size={32} aria-hidden />
@@ -560,7 +608,7 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
 
           <div className="mt-2 flex items-center gap-1 md:gap-2">
             <ControlButton label={transportLabel} onClick={togglePlay}>
-              {wantPlay ? <Pause size={22} weight="fill" aria-hidden /> : <Play size={22} weight="fill" aria-hidden />}
+              {playingNow ? <Pause size={22} weight="fill" aria-hidden /> : <Play size={22} weight="fill" aria-hidden />}
             </ControlButton>
             {nextLink}
 
@@ -600,6 +648,13 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
         </div>
         )}
       </div>
+
+      {mutedHint && (
+        <div ref={hintRef} className="glass-dark pointer-events-none absolute left-1/2 top-[max(20px,env(safe-area-inset-top))] z-30 flex -translate-x-1/2 items-center gap-2.5 rounded-full py-2 pl-2 pr-4 md:top-6" role="status">
+          <kbd className="grid size-7 place-items-center rounded-[8px] bg-white/16 font-sans text-sm font-semibold">M</kbd>
+          <span className="text-sm">Press M to turn on sound</span>
+        </div>
+      )}
 
       {showChip && (
         <div ref={chipRef} className="glass-dark absolute bottom-32 left-4 z-30 flex items-center gap-3 rounded-full py-1.5 pl-4 pr-1.5 md:left-6">
@@ -647,7 +702,7 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
             ? 'The player is not responding.'
             : starting
               ? 'Loading player…'
-              : wantPlay
+              : playingNow
                 ? 'Playing'
                 : 'Paused'}
       </p>

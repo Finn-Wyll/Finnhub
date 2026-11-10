@@ -10,7 +10,9 @@ import type { MediaType } from '../core/models';
  * is driven through the embed URL instead (see Player.tsx): every play, seek or
  * subtitle change loads a new embed at the right second with `startAt` and
  * `autoPlay`, and pausing unloads it. What the embed reports back (PLAYER_EVENT,
- * MEDIA_DATA, a 404 status) is still used for state and progress.
+ * MEDIA_DATA, a 404 status) is still used for state and progress. The embed's own
+ * keyboard shortcuts (Space, arrows, M, F) do work, and keys never trigger its ads
+ * (those listen for mousedown only), so the player hands keyboard focus to it.
  */
 
 export const VIDFAST_BASE = 'https://vidfast.vc';
@@ -82,6 +84,8 @@ export interface PlayerStatus {
   playing: boolean;
   currentTime: number;
   duration: number;
+  /** Whether the embed's video is muted, or null until it says. */
+  muted: boolean | null;
 }
 
 export type PlayerEvent = 'play' | 'pause' | 'seeked' | 'ended' | 'timeupdate' | 'playerstatus';
@@ -91,9 +95,10 @@ interface EventData {
   currentTime?: number;
   duration?: number;
   playing?: boolean;
+  muted?: boolean;
 }
 
-const initial: PlayerStatus = { ready: false, playing: false, currentTime: 0, duration: 0 };
+const initial: PlayerStatus = { ready: false, playing: false, currentTime: 0, duration: 0, muted: null };
 
 export interface BridgeEvents {
   onEnded?: () => void;
@@ -153,6 +158,9 @@ export function useVidfast(frame: RefObject<HTMLIFrameElement | null>, instance:
         playing: d.event === 'play' ? true : d.event === 'pause' || d.event === 'ended' ? false : d.playing ?? s.playing,
         currentTime: num(d.currentTime, s.currentTime),
         duration: num(d.duration, s.duration) || s.duration,
+        // VidFast reports muted inverted: it sends `muted: !mutedState` (read from its code,
+        // where the state is set from video.muted). So the real value is the negation.
+        muted: typeof d.muted === 'boolean' ? !d.muted : s.muted,
       }));
       eventsRef.current.onEvent?.(d.event, { currentTime: num(d.currentTime, 0), duration: num(d.duration, 0) });
       if (d.event === 'ended') eventsRef.current.onEnded?.();

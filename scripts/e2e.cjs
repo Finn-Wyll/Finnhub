@@ -18,23 +18,33 @@ const { chromium } = require('playwright');
 // code): it autoplays on load, honours startAt (where 0 means "unset"), answers only
 // getStatus (other commands are recorded and ignored), posts PLAYER_EVENT and
 // MEDIA_DATA on its own, and posts { event: 'status', data: 404 } for movie 1002.
+// Like the real one it starts muted when the browser refuses sound (always, here),
+// reports \`muted\` inverted, and has native keys: Space, arrows (±10s) and M.
 // It counts clicks, which must never reach it (real clicks there open ads).
 const FAKE_VIDFAST = `<!doctype html><body style="margin:0;background:#000"><script>
   const q = new URLSearchParams(location.search);
   const [, type, id, s, e] = location.pathname.split('/');
-  let t = parseFloat(q.get('startAt')) || 0, d = 1800, playing = false;
+  let t = parseFloat(q.get('startAt')) || 0, d = 1800, playing = false, muted = true;
   window.commands = []; window.clicks = 0;
   addEventListener('pointerdown', () => window.clicks++, true);
   addEventListener('click', () => window.clicks++, true);
   // Time updates go out as JSON strings and everything else as objects, so both payload forms stay covered.
   const ev = (event) => {
-    const msg = { type: 'PLAYER_EVENT', data: { event, currentTime: t, duration: d, tmdbId: +id, mediaType: type, playing } };
+    const msg = { type: 'PLAYER_EVENT', data: { event, currentTime: t, duration: d, tmdbId: +id, mediaType: type, playing, muted: !muted } };
     parent.postMessage(event === 'timeupdate' ? JSON.stringify(msg) : msg, '*');
   };
   addEventListener('message', ({ data }) => {
     if (!data || !data.command) return;
     window.commands.push(data.command);
     if (data.command === 'getStatus') ev('playerstatus');
+  });
+  window.keys = [];
+  addEventListener('keydown', (k) => {
+    window.keys.push(k.code);
+    if (k.code === 'Space') { playing = !playing; ev(playing ? 'play' : 'pause'); }
+    else if (k.code === 'ArrowRight') { t += 10; ev('seeked'); }
+    else if (k.code === 'ArrowLeft') { t = Math.max(0, t - 10); ev('seeked'); }
+    else if (k.code === 'KeyM') { muted = !muted; ev('timeupdate'); }
   });
   if (id === '1002') parent.postMessage({ event: 'status', data: 404 }, '*');
   else {
@@ -109,34 +119,53 @@ const assert = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 
   assert(p.url().includes('season=2'), 'season in URL');
   await p.locator('a[href="/watch/tv/3003/2/3"]').click(); await p.waitForTimeout(1200);
   assert(await p.getByText('S2 E3').first().isVisible(), 'player opened on S2E3');
-  // Player: the embed ignores commands, so our controls drive it by reloading it at the right second
+  // Player: the embed ignores commands, so our controls drive it by reloading it at the right second,
+  // and real keys go to it natively while it has focus.
   const startAt = async () => Number(new URL(await embedSrc()).searchParams.get('startAt'));
+  const focusOurs = () => p.evaluate(() => document.activeElement && document.activeElement.blur());
   assert((await embedSrc()).startsWith('https://vidfast.vc/tv/3003/2/3?autoPlay=true'), 'player embeds vidfast episode URL');
   await p.waitForTimeout(1800);
   assert(await p.locator('button[aria-label="Pause"]').first().isVisible(), 'embed autoplays and the controls show Pause');
-  assert(await p.locator('iframe').evaluate((f) => getComputedStyle(f).pointerEvents === 'none' && f.tabIndex === -1), 'embed can never receive clicks or focus');
+  assert(await p.locator('iframe').evaluate((f) => getComputedStyle(f).pointerEvents === 'none' && f.tabIndex === -1), 'embed can never receive clicks or Tab focus');
+  assert(await p.locator('iframe').evaluate((f) => document.activeElement === f), 'keyboard focus is handed to the playing embed');
+  assert(await p.getByText('Press M to turn on sound').isVisible(), 'muted start shows the Press M hint (muted is read inverted)');
+  await p.keyboard.press('m'); await p.waitForTimeout(500);
+  assert(!(await p.getByText('Press M to turn on sound').isVisible()) && (await embed().evaluate(() => window.keys)).includes('KeyM'), 'real M key reaches the embed and the hint goes away');
+  const srcBefore = await embedSrc();
+  await p.keyboard.press('ArrowRight'); await p.waitForTimeout(500);
+  const seekText = await p.getByRole('slider', { name: 'Seek' }).getAttribute('aria-valuetext');
+  assert((await embedSrc()) === srcBefore && /^0:1\d of 30:00$/.test(seekText), 'arrow key seeks natively, no reload: ' + seekText);
+  await p.keyboard.press('Space'); await p.waitForTimeout(500);
+  assert((await p.locator('iframe').count()) === 1 && await p.locator('button[aria-label="Play"]').first().isVisible(), 'Space pauses natively; the embed stays and our controls show Play');
+  await p.keyboard.press('Space'); await p.waitForTimeout(500);
   await p.mouse.click(640, 300); await p.waitForTimeout(500);
   assert((await p.locator('iframe').count()) === 0 && await p.locator('button[aria-label="Play"]').first().isVisible(), 'clicking the stage pauses by unloading the embed');
   await p.keyboard.press('k'); await p.waitForTimeout(500);
   const resumedAt = await startAt();
-  assert(resumedAt >= 1 && await p.locator('button[aria-label="Pause"]').first().isVisible(), 'k plays again from the paused second: ' + resumedAt);
+  assert(resumedAt >= 10 && await p.locator('button[aria-label="Pause"]').first().isVisible(), 'k plays again from the paused second: ' + resumedAt);
   await p.waitForTimeout(1200);
-  await p.keyboard.press('l'); await p.waitForTimeout(1000);
+  await p.getByRole('button', { name: 'Forward 10 seconds' }).click(); await p.waitForTimeout(1000);
   const skippedTo = await startAt();
-  assert(skippedTo - resumedAt >= 10 && skippedTo - resumedAt <= 13, `l reloads the embed 10s later (${resumedAt} -> ${skippedTo})`);
+  assert(skippedTo - resumedAt >= 10 && skippedTo - resumedAt <= 13, `forward button reloads the embed 10s later (${resumedAt} -> ${skippedTo})`);
   assert((await embed().evaluate(() => window.clicks)) === 0, 'no click ever reached the embed');
   await p.getByRole('button', { name: 'Subtitles' }).click(); await p.waitForTimeout(400);
   await p.getByRole('radio', { name: 'Spanish' }).click(); await p.keyboard.press('Escape'); await p.waitForTimeout(800);
   assert(/[?&]sub=es(&|$)/.test(await embedSrc()) && (await startAt()) >= skippedTo, 'subtitles reload the embed with sub=es at the current time');
+  await p.waitForTimeout(800); await focusOurs();
   await p.keyboard.press('e'); await p.waitForTimeout(600);
   assert(await p.getByRole('button', { name: 'Episodes', exact: true }).getAttribute('aria-expanded') === 'true', 'e opens episode sheet');
-  await p.keyboard.press('e'); await p.waitForTimeout(400);
+  await p.keyboard.press('e'); await p.waitForTimeout(400); await focusOurs();
   await p.keyboard.press('n'); await p.waitForTimeout(1000);
   assert(p.url().endsWith('/watch/tv/3003/2/4') && (await embedSrc()).startsWith('https://vidfast.vc/tv/3003/2/4?') && /[?&]sub=es(&|$)/.test(await embedSrc()), 'n goes to next episode, keeping subtitles');
   await p.getByRole('button', { name: 'Exit player' }).click(); await p.waitForTimeout(800);
   assert(p.url().includes('/title/tv/3003'), 'back returns to title');
   // Film embed
-  await p.goto(base + '/watch/movie/1001'); await p.waitForTimeout(800);
+  const fresh = await b.newPage(); await fresh.route('https://vidfast.vc/**', (r) => r.fulfill({ contentType: 'text/html', body: FAKE_VIDFAST }));
+  await fresh.goto(base + '/watch/movie/1001'); await fresh.waitForTimeout(800);
+  assert((await fresh.locator('iframe').count()) === 0 && await fresh.locator('button[aria-label="Play"]').first().isVisible(), 'a player opened before any interaction waits for a click (so sound is allowed)');
+  await fresh.close();
+  await p.goto(base + '/watch/movie/1001'); await p.waitForTimeout(500);
+  await p.locator('button[aria-label="Play"]').first().click(); await p.waitForTimeout(800);
   assert((await embedSrc()).startsWith('https://vidfast.vc/movie/1001?autoPlay=true'), 'player embeds vidfast film URL');
   // Resume watching from MEDIA_DATA progress (the fake sends 10:00 watched shortly after load)
   await p.waitForTimeout(1200);
@@ -144,7 +173,8 @@ const assert = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 
   assert(await p.getByRole('heading', { name: 'Continue Watching' }).isVisible() && (await p.locator('a[href="/watch/movie/1001"]').count()) === 1, 'home shows Continue Watching');
   await p.getByRole('button', { name: 'Remove Fake 1001 from Continue Watching' }).click({ force: true }); await p.waitForTimeout(300);
   assert((await p.locator('a[href="/watch/movie/1001"]').count()) === 0, 'remove from Continue Watching');
-  await p.goto(base + '/watch/movie/1001'); await p.waitForTimeout(1500);
+  await p.goto(base + '/watch/movie/1001'); await p.waitForTimeout(500);
+  await p.locator('button[aria-label="Play"]').first().click(); await p.waitForTimeout(1500);
   await p.goto(base + '/title/movie/1001'); await p.waitForTimeout(1000);
   assert(await p.getByRole('link', { name: 'Resume', exact: true }).isVisible() && await p.getByText('10:00 of 30:00').isVisible(), 'title page offers Resume with progress');
   await p.getByRole('link', { name: 'Resume', exact: true }).click(); await p.waitForTimeout(1500);
@@ -152,7 +182,8 @@ const assert = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 
   await p.getByRole('button', { name: 'Start Over' }).click(); await p.waitForTimeout(500);
   assert(new URL(await embedSrc()).searchParams.get('startAt') === '0.1' && !(await p.getByText('Resumed at').isVisible()), 'Start Over reloads from the beginning (startAt=0.1, as 0 means unset)');
   // Unavailable title
-  await p.goto(base + '/watch/movie/1002'); await p.waitForTimeout(1200);
+  await p.goto(base + '/watch/movie/1002'); await p.waitForTimeout(500);
+  await p.locator('button[aria-label="Play"]').first().click(); await p.waitForTimeout(1200);
   assert(await p.getByText('Not Available Right Now', { exact: true }).isVisible() && await p.getByRole('button', { name: 'Try Again' }).isVisible(), 'unavailable title shows a clear message');
   // Trailer dialog
   await p.goto(base + '/title/movie/1001'); await p.waitForTimeout(1000);
