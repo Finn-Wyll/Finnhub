@@ -1,0 +1,302 @@
+@import 'tailwindcss';
+
+/* Tokens mirror src/design/tokens.json. Dark is the default; light follows the OS or the in-app toggle. */
+:root {
+  color-scheme: dark;
+  --bg: #0c0c0e;
+  --surface: #141417;
+  --surface-2: #1c1c21;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --text: #f4f4f5;
+  --text-2: #a8a8b0;
+  --text-3: #83838c;
+  --accent: #f2b33d;
+  --accent-text: #f2b33d;
+  --on-accent: #1a1204;
+  --danger: #ff6b5e;
+  --glass: rgba(20, 20, 24, 0.62);
+  --glass-edge: rgba(255, 255, 255, 0.1);
+  --glass-highlight: rgba(255, 255, 255, 0.08);
+  --scrim: rgba(6, 6, 8, 0.72);
+  --shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.6);
+  --skeleton: #1a1a1f;
+  --skeleton-shine: #222228;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    color-scheme: light;
+    --bg: #f6f6f7;
+    --surface: #ffffff;
+    --surface-2: #ebebee;
+    --line: rgba(10, 10, 14, 0.09);
+    --line-strong: rgba(10, 10, 14, 0.18);
+    --text: #17171a;
+    --text-2: #4f4f57;
+    --text-3: #64646d;
+    --accent: #e09a1a;
+    --accent-text: #8f5400;
+    --danger: #c4301f;
+    --glass: rgba(250, 250, 252, 0.7);
+    --glass-edge: rgba(10, 10, 14, 0.08);
+    --glass-highlight: rgba(255, 255, 255, 0.7);
+    --scrim: rgba(20, 20, 24, 0.45);
+    --shadow: 0 24px 60px -24px rgba(30, 30, 40, 0.28);
+    --skeleton: #e6e6ea;
+    --skeleton-shine: #efeff2;
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f6f6f7;
+  --surface: #ffffff;
+  --surface-2: #ebebee;
+  --line: rgba(10, 10, 14, 0.09);
+  --line-strong: rgba(10, 10, 14, 0.18);
+  --text: #17171a;
+  --text-2: #4f4f57;
+  --text-3: #64646d;
+  --accent: #e09a1a;
+  --accent-text: #8f5400;
+  --danger: #c4301f;
+  --glass: rgba(250, 250, 252, 0.7);
+  --glass-edge: rgba(10, 10, 14, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.7);
+  --scrim: rgba(20, 20, 24, 0.45);
+  --shadow: 0 24px 60px -24px rgba(30, 30, 40, 0.28);
+  --skeleton: #e6e6ea;
+  --skeleton-shine: #efeff2;
+}
+
+@theme inline {
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
+  --color-on-accent: var(--on-accent);
+  --color-danger: var(--danger);
+  --radius-card: 12px;
+  --radius-panel: 20px;
+}
+
+/* z-index scale: content 0, sticky chrome 30, popovers 40, modal 50, toast 60 */
+
+html {
+  background: var(--bg);
+  -webkit-text-size-adjust: 100%;
+  scrollbar-gutter: stable;
+  /* Keep focused elements clear of the fixed top bar. */
+  scroll-padding-top: 84px;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.55;
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Display type: tracking tightens as size grows. */
+.t-display {
+  font-size: clamp(2.25rem, 1.4rem + 3.2vw, 3.75rem);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  font-weight: 650;
+  text-wrap: balance;
+}
+.t-title1 {
+  font-size: clamp(1.75rem, 1.3rem + 1.6vw, 2.25rem);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  font-weight: 620;
+  text-wrap: balance;
+}
+.t-title2 {
+  font-size: 1.375rem;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+  text-wrap: balance;
+}
+.t-caption {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  letter-spacing: 0.005em;
+  font-weight: 500;
+}
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Glass: a web approximation of Apple's translucent materials, not an official Apple asset. */
+.glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  backdrop-filter: blur(24px) saturate(170%);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow);
+}
+.glass-dark {
+  background: rgba(18, 18, 22, 0.55);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 20px 50px -20px rgba(0, 0, 0, 0.7);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background: var(--surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .glass-dark {
+    background: rgb(22, 22, 26);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .glass,
+  .glass-dark {
+    border-color: var(--line-strong);
+  }
+}
+
+/* Press feedback lives on pointer-down. */
+.press {
+  transition: transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 160ms ease, color 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+.press:active {
+  transform: scale(0.97);
+}
+
+/* Skeleton shimmer. */
+.skeleton {
+  background: var(--skeleton);
+  position: relative;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, var(--skeleton-shine), transparent);
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+}
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Horizontal rails. */
+.rail {
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--rail-pad, 16px);
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.rail::-webkit-scrollbar {
+  display: none;
+}
+.rail > * {
+  scroll-snap-align: start;
+}
+
+/* Scroll edge effect under floating chrome instead of a hard divider. */
+.edge-fade {
+  mask-image: linear-gradient(to bottom, black 70%, transparent);
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Range input styled as a scrubber (used by the player mockup). */
+.scrub {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  width: 100%;
+  height: 20px;
+  cursor: pointer;
+  touch-action: none;
+}
+.scrub:focus-visible {
+  outline-offset: 2px;
+}
+.scrub::-webkit-slider-runnable-track {
+  height: 4px;
+  background: transparent;
+}
+.scrub::-moz-range-track {
+  height: 4px;
+  background: transparent;
+}
+.scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  transition: transform 140ms ease;
+}
+.scrub::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+}
+.scrub:active::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .press:active {
+    transform: none;
+  }
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}
