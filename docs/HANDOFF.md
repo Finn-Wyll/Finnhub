@@ -6,14 +6,7 @@ Status as of 10 November 2026. Written for the next agent picking this up.
 
 A film and series browser on the TMDB catalogue. It is a React + Vite single-page app, deployed on Cloudflare. The owner may later port it to macOS in SwiftUI.
 
-Everything works against real TMDB data except one screen: the **player** (`/watch/...`). The player is a **design mockup**. Its stage is an intentionally empty iframe, and its controls only change UI state. The owner asked for this explicitly: "The controls will not be functional, this is just to see how a custom designed video application would look... everything else must work properly."
-
-## Boundary you must keep
-
-Earlier in the project the owner asked to scrape video sources from an unlicensed streaming site (boredflix.to) and to embed a third-party embed provider (vidfast.vc) that serves copyrighted shows. Both were declined, and the owner then settled on the TMDB-plus-mockup scope above.
-
-- Do not wire the player iframe, or any other part of the app, to unlicensed embed providers or scraped streams. If asked again, decline and offer legitimate sources: trailers, public-domain or Creative Commons films, or the owner's own files.
-- YouTube trailers through the official embed are fine, and already implemented.
+Everything works against real TMDB data except one screen: the **player** (`/watch/...`). The player is a **design mockup**. Its stage is an intentionally empty iframe, and its controls only change UI state. The owner asked for this explicitly: "The controls will not be functional, this is just to see how a custom designed video application would look... everything else must work properly." The empty iframe is by design and out of scope; do not treat it as a bug.
 
 ## Where things are
 
