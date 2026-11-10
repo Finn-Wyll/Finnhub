@@ -22,8 +22,8 @@ Before you design, restyle or animate any UI (new components, layout changes, mo
 
 ## Player
 
-`src/routes/Player.tsx` embeds `https://vidfast.vc/movie/{id}?autoPlay=true` and `https://vidfast.vc/tv/{id}/{season}/{episode}?autoPlay=true` in an iframe. The embed brings its own controls, so keep our chrome out of the stage (the top bar sits above it, not over it).
+`src/routes/Player.tsx` embeds `https://vidfast.vc/movie/{id}` and `https://vidfast.vc/tv/{id}/{season}/{episode}` (always `autoPlay=true`). Our custom controls drive it through VidFast's postMessage API via `src/lib/vidfast.ts`: only show state the embed reported, never fake it, and check `event.origin` against the VidFast origin list. Anything the API cannot do goes through the hand-over to VidFast's own controls, where our bar sits above the stage instead of over it. `scripts/e2e.cjs` stubs vidfast.vc with a fake that speaks the same API.
 
 ## Before committing
 
-`npm run build` (type-checks and builds). There is no test suite.
+`npm run build` (type-checks and builds). For UI changes, also run the smoke test `scripts/e2e.cjs` (setup steps are in its header comment).

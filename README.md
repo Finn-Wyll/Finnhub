@@ -1,6 +1,6 @@
 # Finnhub
 
-A modern film and series browser built on the TMDB catalogue. You can browse, search, read title details, watch trailers and keep a watchlist. **Play** opens a full-screen player that embeds `vidfast.vc` in an iframe; the embedded page supplies its own playback controls.
+A modern film and series browser built on the TMDB catalogue. You can browse, search, read title details, watch trailers and keep a watchlist. **Play** opens a full-screen player: VidFast plays the video in an iframe, and Finnhub's own controls drive it through VidFast's postMessage API.
 
 ## Run it
 
@@ -46,7 +46,7 @@ Leave `VITE_TMDB_API_KEY` unset for a public site so each visitor enters their o
 - **Search:** debounced multi-search (titles and people), shareable `?q=` URLs, `/` shortcut from anywhere.
 - **Watchlist:** stored locally and synced across tabs.
 - **Settings:** theme (system, dark, light) and TMDB key management.
-- **Player** (`/watch/movie/:id`, `/watch/tv/:id/:season/:episode`): embeds `https://vidfast.vc/movie/{id}?autoPlay=true` or `https://vidfast.vc/tv/{id}/{season}/{episode}?autoPlay=true`, letterboxed to 16:9 under a slim top bar (exit, title, episode sheet, next episode). A dimmed backdrop holds the stage until the embed loads. Shortcuts (while focus is outside the embed): `E` episodes, `N` next.
+- **Player** (`/watch/movie/:id`, `/watch/tv/:id/:season/:episode`): embeds `https://vidfast.vc/movie/{id}` or `https://vidfast.vc/tv/{id}/{season}/{episode}` (with `autoPlay=true`, VidFast's title and fullscreen button hidden, and the amber accent as its theme). Custom controls send VidFast's postMessage commands and follow the state it reports: play/pause, ±10s, scrubber with hover preview, volume and mute, subtitles (reloads the embed at the current time with `sub=`), episode side sheet, next episode, up-next card and auto-advance when an episode ends, real fullscreen, auto-hiding chrome. **Server & Quality** in the settings menu hands over to VidFast's own controls (the API cannot change those); the player does the same automatically if the embed never answers. Shortcuts: `Space`/`K` play, `J`/`L` or arrows seek, `↑`/`↓` volume, `M` mute, `C` subtitles, `F` fullscreen, `E` episodes, `N` next. The bridge lives in `src/lib/vidfast.ts`.
 
 ## Design system
 
@@ -58,7 +58,7 @@ Built to four briefs: *design-taste-frontend*, *apple-design*, *animejs* and *We
 - **Shape:** interactive controls are pills, media cards 12px, panels 20px.
 - **Materials:** translucent "glass" chrome (`backdrop-filter`). This is a web approximation of Apple's materials, not an Apple asset. It falls back to solid surfaces under `prefers-reduced-transparency`.
 - **Motion:** Anime.js v4 springs (`src/lib/motion.ts`) using Apple's perceived-duration + bounce model. Critically damped by default; bounce only after a gesture. Surfaces grow from their trigger and leave along the same path. `prefers-reduced-motion` turns movement into short cross-fades.
-- **Accessibility:** skip link, landmarks, labelled icon buttons, native `<dialog>` for trailers, radio-group menus, live regions for search results and player loading, visible focus rings, scroll padding under the fixed bar.
+- **Accessibility:** skip link, landmarks, labelled icon buttons, native `<dialog>` for trailers, radio-group menus, live regions for search results and player state, visible focus rings, scroll padding under the fixed bar.
 
 ## Structure
 

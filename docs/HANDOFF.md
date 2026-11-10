@@ -6,7 +6,7 @@ Status as of 10 November 2026. Written for the next agent picking this up.
 
 A film and series browser on the TMDB catalogue. It is a React + Vite single-page app, deployed on Cloudflare. The owner may later port it to macOS in SwiftUI.
 
-Everything works against real TMDB data, including the **player** (`/watch/...`), which is now in scope. It embeds `https://vidfast.vc/movie/{id}?autoPlay=true` for films and `https://vidfast.vc/tv/{id}/{season}/{episode}?autoPlay=true` for episodes in an iframe, using the TMDB id. The embedded page brings its own playback controls; our chrome is a slim top bar above the stage (exit, title, episode sheet, next episode) and must not cover the embed. The earlier custom-controls mockup (scrubber, menus, fake clock) has been removed.
+Everything works against real TMDB data, including the **player** (`/watch/...`), which is now in scope. It embeds `https://vidfast.vc/movie/{id}?autoPlay=true` for films and `https://vidfast.vc/tv/{id}/{season}/{episode}?autoPlay=true` for episodes in an iframe, using the TMDB id. The custom controls drive it through VidFast's postMessage API (`play`, `pause`, `seek`, `volume`, `mute`, `getStatus`) and display the state it reports in `PLAYER_EVENT` messages; the bridge is `src/lib/vidfast.ts`. The API cannot change server or quality, so **Server & Quality** in the settings menu hands over to VidFast's own controls, and the player falls back to them automatically if the embed never answers within 12 seconds. Subtitles are a URL parameter, so changing them reloads the embed at the current time.
 
 ## Where things are
 
@@ -42,7 +42,7 @@ npx wrangler dev --port 8788    # serve dist/ the way Cloudflare does (SPA fallb
 
 There is no unit test suite and no linter installed. The `eslint-disable` comments in the hooks are leftovers; nothing enforces them.
 
-**End-to-end smoke test:** `scripts/e2e.cjs` runs 28 checks against the mock: onboarding and key validation, watchlist, genre and sort in the URL, infinite scroll, search, the `/` shortcut, seasons, the player embed URL, the episode sheet shortcut, next episode, trailer dialog, theme, and 404. The setup steps are in the comment at the top of the file. It needs Playwright, which is pre-installed in the cloud sandbox but is not a project dependency. The player checks were rewritten for the embedded player. All 28 checks passed after that change.
+**End-to-end smoke test:** `scripts/e2e.cjs` runs 32 checks against the mock: onboarding and key validation, watchlist, genre and sort in the URL, infinite scroll, search, the `/` shortcut, seasons, the player controls (against a stand-in for vidfast.vc that speaks its message API), subtitles, the hand-over to VidFast's controls, the episode sheet, next episode, trailer dialog, theme, and 404. The setup steps are in the comment at the top of the file. It needs Playwright, which is pre-installed in the cloud sandbox but is not a project dependency. All 32 checks passed at the last change.
 
 **Mock details:** `scripts/mock-tmdb.mjs` serves generated SVG artwork and deterministic sample titles (movie ids 1000 to 1089, TV ids 3000 to 3059, people 5000 to 5039). The key `bad` returns 401; any other key is accepted.
 
@@ -53,7 +53,7 @@ src/core/        framework-free: models, TMDB client (cache + in-flight dedupe),
 src/design/      tokens.json, the single source of truth for colours, radii, type and springs
 src/lib/         motion.ts (Anime.js springs), format.ts (Intl formatting), env.ts
 src/hooks/       useQuery, useInfinite, useEnter, useDocumentTitle
-src/components/  UI building blocks; player/ holds the player top-bar button and episode sheet
+src/components/  UI building blocks; player/ holds the player chrome (buttons, scrubber, menus, episode sheet)
 src/routes/      Home, Browse, Title, Person, Search, Watchlist, Settings, Onboarding, Player, NotFound
 docs/SWIFT_PORT.md   how each layer maps onto SwiftUI
 ```
@@ -88,7 +88,7 @@ The owner asked for four skills to be followed: *design-taste-frontend*, *apple-
 None of these are committed to; they are known gaps.
 
 - **Custom trailer controls:** offered to the owner, no answer yet. This would use the YouTube IFrame Player API with `controls=0`, so trailers match the player design.
-- **Player embed** is a third-party page: we cannot see its playback state, so there is no resume position, up-next card or auto-advance. The `E` and `N` shortcuts only work while focus is outside the iframe.
+- **Player:** VidFast's commands and events were built from its documentation and tested only against a stand-in, because the sandbox blocks `vidfast.vc`; confirm them against the real embed. There is no resume position yet: VidFast's `MEDIA_DATA` message carries per-title progress that could feed `startAt`. Speed and audio track are not in the API. Keyboard shortcuts stop while focus is inside the embed (only reachable in VidFast-controls mode).
 - **Browse grid:** not virtualised. Very long infinite scrolls grow the DOM. `content-visibility` or virtualisation would help.
 - **Language and region:** TMDB requests are fixed to `en-US`, and certifications prefer the US. Date and number formatting already follows the browser's locale.
 - **Watchlist** is per browser, with no accounts or sync.

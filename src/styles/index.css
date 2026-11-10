@@ -248,6 +248,48 @@ body {
   overflow: hidden;
 }
 
+/* Range input styled as a scrubber (used by the player). */
+.scrub {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  width: 100%;
+  height: 20px;
+  cursor: pointer;
+  touch-action: none;
+}
+.scrub:focus-visible {
+  outline-offset: 2px;
+}
+.scrub::-webkit-slider-runnable-track {
+  height: 4px;
+  background: transparent;
+}
+.scrub::-moz-range-track {
+  height: 4px;
+  background: transparent;
+}
+.scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  transition: transform 140ms ease;
+}
+.scrub::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+}
+.scrub:active::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .press:active {
     transform: none;
