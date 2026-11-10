@@ -26,7 +26,9 @@ Without a key in the environment, the app asks for one on first launch and store
 
 The app is a static build, configured for Cloudflare Workers static assets in `wrangler.jsonc`. Unknown paths fall back to `index.html`, so deep links survive a refresh. `public/_headers` caches the fingerprinted `/assets` files forever and adds basic security headers.
 
-**From the dashboard (auto-deploys on every push):** Workers & Pages, Create, Import a repository, pick this repo. Build command `npm run build`, deploy command `npx wrangler deploy`.
+**From GitHub Actions (auto-deploys on every push to `main`):** `.github/workflows/deploy.yml` builds and deploys. Add three repository secrets under Settings, Secrets and variables, Actions: `TMDB_API_KEY`, `CLOUDFLARE_API_TOKEN` (template "Edit Cloudflare Workers") and `CLOUDFLARE_ACCOUNT_ID`. Use this or the dashboard Git integration below, not both.
+
+**From the Cloudflare dashboard:** Workers & Pages, Create, Import a repository, pick this repo. Build command `npm run build`, deploy command `npx wrangler deploy`.
 
 **From your machine:**
 
