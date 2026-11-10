@@ -20,7 +20,11 @@ const FAKE_VIDFAST = `<!doctype html><body style="margin:0;background:#000"><scr
   const q = new URLSearchParams(location.search);
   let t = Number(q.get('startAt')) || 0, d = 1800, playing = false, muted = false, volume = 1;
   window.commands = [];
-  const ev = (event) => parent.postMessage({ type: 'PLAYER_EVENT', data: { event, currentTime: t, duration: d, tmdbId: 0, mediaType: 'tv', playing, muted, volume } }, '*');
+  // Time updates go out as JSON strings and everything else as objects, so both payload forms stay covered.
+  const ev = (event) => {
+    const msg = { type: 'PLAYER_EVENT', data: { event, currentTime: t, duration: d, tmdbId: 0, mediaType: 'tv', playing, muted, volume } };
+    parent.postMessage(event === 'timeupdate' ? JSON.stringify(msg) : msg, '*');
+  };
   addEventListener('message', ({ data }) => {
     if (!data || !data.command) return;
     window.commands.push(data.command);

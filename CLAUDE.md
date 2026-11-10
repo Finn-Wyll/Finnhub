@@ -22,7 +22,7 @@ Before you design, restyle or animate any UI (new components, layout changes, mo
 
 ## Player
 
-`src/routes/Player.tsx` embeds `https://vidfast.vc/movie/{id}` and `https://vidfast.vc/tv/{id}/{season}/{episode}` (always `autoPlay=true`). Our custom controls drive it through VidFast's postMessage API via `src/lib/vidfast.ts`: only show state the embed reported, never fake it, and check `event.origin` against the VidFast origin list. Anything the API cannot do goes through the hand-over to VidFast's own controls, where our bar sits above the stage instead of over it. Watch progress lives in `src/core/progress.ts` (VidFast's `MEDIA_DATA` shape); use `useContinue()` for any Play button so it resumes. `scripts/e2e.cjs` stubs vidfast.vc with a fake that speaks the same API, including `MEDIA_DATA`.
+`src/routes/Player.tsx` embeds `https://vidfast.vc/movie/{id}` and `https://vidfast.vc/tv/{id}/{season}/{episode}` (always `autoPlay=true`). Our custom controls drive it through VidFast's postMessage API via `src/lib/vidfast.ts`: only show state the embed reported, never fake it, and check `event.origin` against the VidFast origin list. Anything the API cannot do goes through the hand-over to VidFast's own controls, where our bar sits above the stage instead of over it. Add `?debug=player` to a watch URL to log the bridge's traffic in the console. Watch progress lives in `src/core/progress.ts` (VidFast's `MEDIA_DATA` shape); use `useContinue()` for any Play button so it resumes. `scripts/e2e.cjs` stubs vidfast.vc with a fake that speaks the same API, including `MEDIA_DATA`.
 
 ## Before committing
 

@@ -8,18 +8,43 @@ import type { MediaType } from '../core/models';
 
 export const VIDFAST_BASE = 'https://vidfast.vc';
 
-/** Every origin VidFast may post from. Messages from anywhere else are ignored. */
-const ORIGINS = new Set([
-  'https://vidfast.pro',
-  'https://vidfast.in',
-  'https://vidfast.io',
-  'https://vidfast.me',
-  'https://vidfast.net',
-  'https://vidfast.pm',
-  'https://vidfast.xyz',
-  'https://vidfast.vc',
-  'https://vidfast.bz',
-]);
+/** Every domain VidFast may post from (and their subdomains). Messages from anywhere else are ignored. */
+const DOMAINS = ['vidfast.pro', 'vidfast.in', 'vidfast.io', 'vidfast.me', 'vidfast.net', 'vidfast.pm', 'vidfast.xyz', 'vidfast.vc', 'vidfast.bz'];
+
+export function isVidfastOrigin(origin: string) {
+  try {
+    const u = new URL(origin);
+    return u.protocol === 'https:' && DOMAINS.some((d) => u.hostname === d || u.hostname.endsWith(`.${d}`));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Debug logging for the bridge: add `?debug=player` to a /watch URL (it is
+ * remembered for the tab) to log every message the page receives and every
+ * command it sends.
+ */
+function debugEnabled() {
+  try {
+    if (new URLSearchParams(window.location.search).get('debug') === 'player') sessionStorage.setItem('finnhub.debug.player', '1');
+    return sessionStorage.getItem('finnhub.debug.player') === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Messages may arrive as objects or as JSON strings. */
+function parse(raw: unknown): { type?: string; data?: unknown; event?: string } | null {
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  return raw && typeof raw === 'object' ? (raw as { type?: string; data?: unknown }) : null;
+}
 
 /** Player accent (tokens.json dark accent), without the leading #. */
 const THEME = 'F2B33D';
@@ -83,7 +108,6 @@ export interface BridgeEvents {
  */
 export function useVidfast(frame: RefObject<HTMLIFrameElement | null>, instance: string, events: BridgeEvents = {}) {
   const [status, setStatus] = useState<PlayerStatus>(initial);
-  const origin = useRef<string>('*');
   // After a local seek, ignore periodic time reports until the embed catches up.
   const holdTimeUntil = useRef(0);
   const eventsRef = useRef(events);
@@ -91,29 +115,41 @@ export function useVidfast(frame: RefObject<HTMLIFrameElement | null>, instance:
 
   useEffect(() => {
     setStatus(initial);
-    origin.current = '*';
     holdTimeUntil.current = 0;
   }, [instance]);
 
+  const debug = useRef(false);
+  useEffect(() => {
+    debug.current = debugEnabled();
+  }, []);
+
+  // Commands go to the iframe with targetOrigin '*', as VidFast's docs do: the embed
+  // may redirect or host its player on another VidFast domain, and a targeted origin
+  // that does not match is dropped silently. The commands carry nothing sensitive.
   const send = useCallback(
     (cmd: Command) => {
-      frame.current?.contentWindow?.postMessage(cmd, origin.current);
+      if (debug.current) console.info('[vidfast] send', cmd);
+      frame.current?.contentWindow?.postMessage(cmd, '*');
     },
     [frame],
   );
 
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
-      if (!ORIGINS.has(e.origin) || e.source !== frame.current?.contentWindow) return;
-      const msg = e.data as { type?: string; data?: EventData } | null;
-      if (!msg || !msg.data) return;
+      if (debug.current) console.info('[vidfast] receive', e.origin, e.source === frame.current?.contentWindow ? '(our iframe)' : '(other frame)', e.data);
+      // Origin is the trust boundary. The sender may be a player nested inside our
+      // iframe rather than the iframe itself, so the source window is not compared.
+      if (!isVidfastOrigin(e.origin)) return;
+      const msg = parse(e.data);
+      if (!msg) return;
       if (msg.type === 'MEDIA_DATA') {
-        eventsRef.current.onMediaData?.(msg.data);
+        if (msg.data) eventsRef.current.onMediaData?.(msg.data);
         return;
       }
       if (msg.type !== 'PLAYER_EVENT') return;
-      origin.current = e.origin;
-      const d = msg.data;
+      // Documented shape is { type, data: { event, ... } }; tolerate the fields at the top level too.
+      const d = (msg.data && typeof msg.data === 'object' ? msg.data : msg) as EventData;
+      if (typeof d.event !== 'string') return;
       const holding = d.event === 'timeupdate' && performance.now() < holdTimeUntil.current;
       if (d.event === 'seeked') holdTimeUntil.current = 0;
       setStatus((s) => ({
