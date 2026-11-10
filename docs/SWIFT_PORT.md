@@ -43,7 +43,7 @@ Anime.js `spring({ duration, bounce })` uses the same perceived-duration model a
 
 ## Player controls
 
-Each control in `src/routes/Player.tsx` has a native counterpart:
+The web player now embeds an external page (`vidfast.vc`) that brings its own controls; only the top bar and episode sheet live in `src/routes/Player.tsx`. If the native app draws its own controls around `AVPlayerView`, these are the counterparts:
 
 | Web control | macOS |
 | --- | --- |

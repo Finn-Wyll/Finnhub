@@ -1,6 +1,6 @@
 # Finnhub
 
-A modern film and series browser built on the TMDB catalogue. You can browse, search, read title details, watch trailers and keep a watchlist. **Play** opens a full-screen player *design*: an empty iframe surrounded by a complete set of custom video controls. The controls respond visually (state, menus, keyboard, fullscreen) but are deliberately not connected to any media source.
+A modern film and series browser built on the TMDB catalogue. You can browse, search, read title details, watch trailers and keep a watchlist. **Play** opens a full-screen player that embeds `vidfast.vc` in an iframe; the embedded page supplies its own playback controls.
 
 ## Run it
 
@@ -46,7 +46,7 @@ Leave `VITE_TMDB_API_KEY` unset for a public site so each visitor enters their o
 - **Search:** debounced multi-search (titles and people), shareable `?q=` URLs, `/` shortcut from anywhere.
 - **Watchlist:** stored locally and synced across tabs.
 - **Settings:** theme (system, dark, light) and TMDB key management.
-- **Player mockup** (`/watch/movie/:id`, `/watch/tv/:id/:season/:episode`): scrubber with hover preview, ±10s, volume, subtitles menu with live caption preview, quality / speed / audio menu, episode side sheet, next episode, up-next card, picture-in-picture button, real fullscreen, auto-hiding chrome. Shortcuts: `Space`/`K` play, `J`/`L` or arrows seek, `↑`/`↓` volume, `M` mute, `C` captions, `F` fullscreen, `E` episodes, `N` next.
+- **Player** (`/watch/movie/:id`, `/watch/tv/:id/:season/:episode`): embeds `https://vidfast.vc/movie/{id}?autoPlay=true` or `https://vidfast.vc/tv/{id}/{season}/{episode}?autoPlay=true`, letterboxed to 16:9 under a slim top bar (exit, title, episode sheet, next episode). A dimmed backdrop holds the stage until the embed loads. Shortcuts (while focus is outside the embed): `E` episodes, `N` next.
 
 ## Design system
 
@@ -58,7 +58,7 @@ Built to four briefs: *design-taste-frontend*, *apple-design*, *animejs* and *We
 - **Shape:** interactive controls are pills, media cards 12px, panels 20px.
 - **Materials:** translucent "glass" chrome (`backdrop-filter`). This is a web approximation of Apple's materials, not an Apple asset. It falls back to solid surfaces under `prefers-reduced-transparency`.
 - **Motion:** Anime.js v4 springs (`src/lib/motion.ts`) using Apple's perceived-duration + bounce model. Critically damped by default; bounce only after a gesture. Surfaces grow from their trigger and leave along the same path. `prefers-reduced-motion` turns movement into short cross-fades.
-- **Accessibility:** skip link, landmarks, labelled icon buttons, native `<dialog>` for trailers, radio-group menus, live regions for search results and player state, visible focus rings, scroll padding under the fixed bar.
+- **Accessibility:** skip link, landmarks, labelled icon buttons, native `<dialog>` for trailers, radio-group menus, live regions for search results and player loading, visible focus rings, scroll padding under the fixed bar.
 
 ## Structure
 
