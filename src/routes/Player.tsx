@@ -20,7 +20,7 @@ import {
 import { animate } from 'animejs';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useTmdb } from '../app-context';
+import { useApp, useTmdb } from '../app-context';
 import type { Episode, MediaType, TitleDetail } from '../core/models';
 import { Img } from '../components/Img';
 import { ErrorState } from '../components/States';
@@ -85,8 +85,13 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
   // Embed source. Changing subtitles reloads the embed at the current position.
   const epKey = `${season}-${episode}`;
   const [sub, setSub] = useState<string | null>(null);
+  const { progress } = useApp();
+  // Where this episode was left off, read once when it opens so saving progress never reloads the embed.
+  const saved = useRef(new Map<string, number>());
+  if (!saved.current.has(epKey)) saved.current.set(epKey, progress.resumeFor(type, id, season, episode));
+  const resumedFrom = saved.current.get(epKey) ?? 0;
   const [resume, setResume] = useState<{ ep: string; at: number } | null>(null);
-  const startAt = resume?.ep === epKey ? resume.at : 0;
+  const startAt = resume?.ep === epKey ? resume.at : resumedFrom;
   const src = vidfastUrl(type, id, season, episode, { sub, startAt });
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const loaded = loadedSrc === src;
@@ -94,8 +99,32 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
   const next = useMemo(() => nextEpisode(title, episodes, season, episode), [title, episodes, season, episode]);
   const nextHref = next ? `/watch/tv/${id}/${next.season}/${next.episode}` : null;
 
-  const { status, controls } = useVidfast(frameRef, src, () => {
-    if (nextHref) navigate(nextHref, { replace: true });
+  const lastSave = useRef(0);
+  const { status, controls } = useVidfast(frameRef, src, {
+    onEnded: () => {
+      if (nextHref) navigate(nextHref, { replace: true });
+    },
+    onMediaData: (data) => {
+      progress.merge(data);
+      if (title) progress.describe(type, id, { title: title.title, poster_path: title.posterPath, backdrop_path: title.backdropPath });
+    },
+    onEvent: (event, { currentTime, duration: total }) => {
+      if (!total || event === 'playerstatus') return;
+      const now = performance.now();
+      if (event === 'timeupdate' && now - lastSave.current < 5000) return;
+      // A fresh embed can report 0 before it reaches startAt; that must not erase the resume point.
+      if (currentTime < 10 && event !== 'seeked' && event !== 'ended') return;
+      lastSave.current = now;
+      progress.record({
+        type,
+        id,
+        season,
+        episode,
+        watched: event === 'ended' ? total : currentTime,
+        duration: total,
+        meta: title ? { title: title.title, poster_path: title.posterPath, backdrop_path: title.backdropPath } : undefined,
+      });
+    },
   });
   const { playing, duration, volume, muted } = status;
 
@@ -106,6 +135,8 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
   const [idle, setIdle] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [drag, setDrag] = useState<number | null>(null);
+  const [chipGone, setChipGone] = useState<string | null>(null);
+  const chipRef = useRef<HTMLDivElement>(null);
   const [flash, setFlash] = useState<{ icon: 'play' | 'pause' | 'back' | 'fwd'; n: number } | null>(null);
   const time = drag ?? status.currentTime;
 
@@ -212,6 +243,18 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
     if (location.key !== 'default') navigate(-1);
     else navigate(`/title/${type}/${id}`);
   };
+
+  // "Resumed at" chip: rises in once the embed is playing from the saved point, leaves after 8s.
+  const showChip = !native && status.ready && resumedFrom > 0 && startAt === resumedFrom && chipGone !== epKey;
+  useEffect(() => {
+    if (!showChip) return;
+    const anim = chipRef.current ? enter(chipRef.current, { distance: 12 }) : null;
+    const t = window.setTimeout(() => setChipGone(epKey), 8000);
+    return () => {
+      window.clearTimeout(t);
+      anim?.revert();
+    };
+  }, [showChip, epKey]);
 
   // The up-next card rises in when it appears, so the change is noticed without being abrupt.
   const upNextShown = type === 'tv' && !!next && !native && duration > 0 && duration - time <= 25 && time > 0;
@@ -547,6 +590,25 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
               </div>
             </div>
           </div>
+
+          {showChip && (
+            <div ref={chipRef} className="glass-dark absolute bottom-32 left-4 z-30 flex items-center gap-3 rounded-full py-1.5 pl-4 pr-1.5 md:left-6">
+              <p className="text-sm">
+                Resumed at <span className="tnum">{clock(resumedFrom)}</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  controls.seek(0);
+                  setChipGone(epKey);
+                  wake();
+                }}
+                className="press h-9 rounded-full bg-white/14 px-3.5 text-sm font-medium outline-offset-2 hover:bg-white/20 focus-visible:bg-white/20"
+              >
+                Start Over
+              </button>
+            </div>
+          )}
 
           {showUpNext && nextHref && (
             <Link

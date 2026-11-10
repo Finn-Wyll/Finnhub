@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTmdb } from '../app-context';
 import type { TitleSummary } from '../core/models';
+import { useContinue } from '../hooks/useContinue';
 import { useQuery } from '../hooks/useQuery';
 import { runtime } from '../lib/format';
 import { prefersReducedMotion, springs } from '../lib/motion';
@@ -15,9 +16,6 @@ import { TrailerDialog } from './TrailerDialog';
 
 const ADVANCE_MS = 9000;
 
-export const watchHref = (t: Pick<TitleSummary, 'mediaType' | 'id'>) =>
-  t.mediaType === 'movie' ? `/watch/movie/${t.id}` : `/watch/tv/${t.id}/1/1`;
-
 export function Hero({ items }: { items: TitleSummary[] }) {
   const client = useTmdb();
   const [index, setIndex] = useState(0);
@@ -27,6 +25,7 @@ export function Hero({ items }: { items: TitleSummary[] }) {
   const copy = useRef<HTMLDivElement>(null);
   const progress = useRef<HTMLSpanElement>(null);
   const item = items[index];
+  const play = useContinue()(item);
 
   // Detail for the active slide: logo, runtime, genres, trailer.
   const { data: detail } = useQuery((s) => client.detail(item.mediaType, item.id, s), [item.mediaType, item.id]);
@@ -122,8 +121,8 @@ export function Hero({ items }: { items: TitleSummary[] }) {
             {item.overview}
           </p>
           <div data-hero className="mt-6 flex items-center gap-3">
-            <LinkButton to={watchHref(item)} size="lg" icon={<Play size={18} weight="fill" aria-hidden />}>
-              Play
+            <LinkButton to={play.href} size="lg" icon={<Play size={18} weight="fill" aria-hidden />}>
+              {play.target && play.target.at > 0 ? 'Resume' : 'Play'}
             </LinkButton>
             <LinkButton to={titleHref(item)} variant="secondary" size="lg" icon={<Info size={18} aria-hidden />}>
               Details

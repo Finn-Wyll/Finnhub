@@ -1,4 +1,6 @@
-import { useTmdb, useWatchlist } from '../app-context';
+import { useProgress, useTmdb, useWatchlist } from '../app-context';
+import { ContinueCard } from '../components/ContinueCard';
+import { continueTarget } from '../core/progress';
 import { Hero, HeroSkeleton } from '../components/Hero';
 import { QueryRail } from '../components/QueryRail';
 import { PosterCard } from '../components/PosterCard';
@@ -10,6 +12,12 @@ import { useQuery } from '../hooks/useQuery';
 export default function Home() {
   const client = useTmdb();
   const { entries } = useWatchlist();
+  const { all: progress, store } = useProgress();
+  // In progress, or a series whose latest episode is done (the next one is a tap away).
+  const continuing = Object.values(progress)
+    .filter((p) => p.title && (continueTarget(p) || p.type === 'tv'))
+    .sort((a, b) => b.last_updated - a.last_updated)
+    .slice(0, 20);
   useDocumentTitle(null);
 
   const featured = useQuery((s) => client.trending('all', 'week', s), []);
@@ -29,6 +37,13 @@ export default function Home() {
       )}
 
       <div className="relative flex flex-col gap-10 pb-16 md:gap-14">
+        {continuing.length > 0 && (
+          <Rail id="continue" title="Continue Watching">
+            {continuing.map((p) => (
+              <ContinueCard key={`${p.type}-${p.id}`} entry={p} onRemove={() => store.remove(p.type, p.id)} />
+            ))}
+          </Rail>
+        )}
         <QueryRail id="trending" title="Trending Today" eager showType load={(s) => client.trending('all', 'day', s)} />
         {entries.length > 0 && (
           <Rail id="your-list" title="Your Watchlist" href="/watchlist">

@@ -52,6 +52,7 @@ export function writeJSON(store: KeyValueStore, key: string, value: unknown) {
 export const KEYS = {
   apiKey: 'finnhub.tmdb.key',
   watchlist: 'finnhub.watchlist.v1',
+  progress: 'finnhub.progress.v1',
   theme: 'finnhub.theme',
   recent: 'finnhub.recentSearches',
 } as const;

@@ -1,10 +1,11 @@
 import { ArrowSquareOut, CaretDown, FilmReel, Play } from '@phosphor-icons/react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { useTmdb } from '../app-context';
+import { useProgress, useTmdb } from '../app-context';
+import { episodeKey, isFinished, progressKey, watchedShare } from '../core/progress';
+import { useContinue } from '../hooks/useContinue';
 import type { MediaType, TitleDetail, Video } from '../core/models';
 import { IconButton, LinkButton } from '../components/Button';
-import { watchHref } from '../components/Hero';
 import { Img } from '../components/Img';
 import { PosterCard } from '../components/PosterCard';
 import { RAIL_CARD, Rail } from '../components/Rail';
@@ -15,7 +16,7 @@ import { WatchlistButton } from '../components/WatchlistButton';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useEnter } from '../hooks/useEnter';
 import { useQuery } from '../hooks/useQuery';
-import { language, longDate, money, plural, runtime } from '../lib/format';
+import { clock, language, longDate, money, plural, runtime } from '../lib/format';
 import NotFound from './NotFound';
 
 export default function Title() {
@@ -51,6 +52,15 @@ function TitleContent({ t }: { t: TitleDetail }) {
   const [trailer, setTrailer] = useState<{ video: Video; origin: HTMLElement | null } | null>(null);
   const trailerBtn = useRef<HTMLButtonElement>(null);
   const intro = useEnter<HTMLDivElement>('[data-enter-hero]', t.id, { stagger: 55 });
+  const { all } = useProgress();
+  const play = useContinue()(t);
+  const saved = all[progressKey(t.mediaType, t.id)];
+  const resumeP =
+    play.target && play.target.at > 0
+      ? t.mediaType === 'movie'
+        ? saved?.progress
+        : saved?.show_progress?.[episodeKey(play.target.season, play.target.episode)]?.progress
+      : undefined;
 
   const facts: [string, string][] = (
     [
@@ -146,8 +156,8 @@ function TitleContent({ t }: { t: TitleDetail }) {
               {t.overview || 'No overview is available for this title yet.'}
             </p>
             <div data-enter-hero className="mt-7 flex flex-wrap items-center gap-3">
-              <LinkButton to={watchHref(t)} size="lg" icon={<Play size={18} weight="fill" aria-hidden />}>
-                {t.mediaType === 'tv' ? 'Play S1 E1' : 'Play'}
+              <LinkButton to={play.href} size="lg" icon={<Play size={18} weight="fill" aria-hidden />}>
+                {play.label}
               </LinkButton>
               <WatchlistButton item={t} />
               {t.trailer && (
@@ -161,6 +171,16 @@ function TitleContent({ t }: { t: TitleDetail }) {
                 </IconButton>
               )}
             </div>
+            {resumeP && (
+              <div className="mt-3 flex items-center gap-3 text-sm text-text-2">
+                <div className="h-1 w-32 overflow-hidden rounded-full bg-surface-2" aria-hidden>
+                  <div className="h-full bg-accent" style={{ width: `${watchedShare(resumeP) * 100}%` }} />
+                </div>
+                <span className="tnum">
+                  {clock(resumeP.watched)} of {clock(resumeP.duration)}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -266,6 +286,8 @@ function Seasons({ t }: { t: TitleDetail }) {
   const season = t.seasons.find((s) => s.seasonNumber === requested) ?? t.seasons[0];
   const { data: episodes, error, retry, loading } = useQuery((s) => client.season(t.id, season.seasonNumber, s), [t.id, season.seasonNumber]);
   const list = useEnter<HTMLOListElement>('[data-ep]', `${season.seasonNumber}-${episodes?.length ?? 0}`, { stagger: 30 });
+  const { all } = useProgress();
+  const saved = all[progressKey('tv', t.id)];
 
   return (
     <section aria-labelledby="episodes-heading" className="px-4 md:px-12">
@@ -311,7 +333,10 @@ function Seasons({ t }: { t: TitleDetail }) {
             ? Array.from({ length: 4 }, () => null)
             : episodes ?? []
           ).map((ep, i) =>
-            ep ? (
+            ep ? (() => {
+              const p = saved?.show_progress?.[episodeKey(ep.seasonNumber, ep.episodeNumber)]?.progress;
+              const share = isFinished(p) ? 1 : watchedShare(p);
+              return (
               <li key={ep.id} data-ep>
                 <Link
                   to={`/watch/tv/${t.id}/${ep.seasonNumber}/${ep.episodeNumber}`}
@@ -319,6 +344,11 @@ function Seasons({ t }: { t: TitleDetail }) {
                 >
                   <div className="relative aspect-video overflow-hidden rounded-[10px] bg-surface-2">
                     <Img path={ep.stillPath ?? t.backdropPath} size="w300" alt="" fallback={`${ep.episodeNumber}`} className="size-full" />
+                    {share > 0 && (
+                      <div className="absolute inset-x-0 bottom-0 h-1 bg-black/40" aria-hidden>
+                        <div className="h-full bg-accent" style={{ width: `${share * 100}%` }} />
+                      </div>
+                    )}
                     <span className="glass-dark absolute inset-0 m-auto grid size-9 place-items-center rounded-full text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                       <Play size={14} weight="fill" aria-hidden />
                     </span>
@@ -326,6 +356,7 @@ function Seasons({ t }: { t: TitleDetail }) {
                   <div className="min-w-0 py-1">
                     <p className="truncate font-medium">
                       <span className="text-text-3 tnum">{ep.episodeNumber}.</span> {ep.name}
+                      {share > 0 && <span className="sr-only">{share === 1 ? ', watched' : `, ${Math.round(share * 100)}% watched`}</span>}
                     </p>
                     <p className="mt-0.5 text-sm text-text-3 tnum">
                       {[runtime(ep.runtime), longDate(ep.airDate)].filter(Boolean).join(', ')}
@@ -334,7 +365,8 @@ function Seasons({ t }: { t: TitleDetail }) {
                   </div>
                 </Link>
               </li>
-            ) : (
+              );
+            })() : (
               <li key={i} className="grid grid-cols-[132px_minmax(0,1fr)] gap-4 p-2 sm:grid-cols-[176px_minmax(0,1fr)]" aria-hidden>
                 <div className="skeleton aspect-video rounded-[10px]" />
                 <div className="py-1">

@@ -42,7 +42,7 @@ npx wrangler dev --port 8788    # serve dist/ the way Cloudflare does (SPA fallb
 
 There is no unit test suite and no linter installed. The `eslint-disable` comments in the hooks are leftovers; nothing enforces them.
 
-**End-to-end smoke test:** `scripts/e2e.cjs` runs 32 checks against the mock: onboarding and key validation, watchlist, genre and sort in the URL, infinite scroll, search, the `/` shortcut, seasons, the player controls (against a stand-in for vidfast.vc that speaks its message API), subtitles, the hand-over to VidFast's controls, the episode sheet, next episode, trailer dialog, theme, and 404. The setup steps are in the comment at the top of the file. It needs Playwright, which is pre-installed in the cloud sandbox but is not a project dependency. All 32 checks passed at the last change.
+**End-to-end smoke test:** `scripts/e2e.cjs` runs 37 checks against the mock: onboarding and key validation, watchlist, genre and sort in the URL, infinite scroll, search, the `/` shortcut, seasons, the player controls (against a stand-in for vidfast.vc that speaks its message API), subtitles, the hand-over to VidFast's controls, resume watching and Continue Watching, the episode sheet, next episode, trailer dialog, theme, and 404. The setup steps are in the comment at the top of the file. It needs Playwright, which is pre-installed in the cloud sandbox but is not a project dependency. All 37 checks passed at the last change.
 
 **Mock details:** `scripts/mock-tmdb.mjs` serves generated SVG artwork and deterministic sample titles (movie ids 1000 to 1089, TV ids 3000 to 3059, people 5000 to 5039). The key `bad` returns 401; any other key is accepted.
 
@@ -64,6 +64,7 @@ Key decisions:
 - **Domain models** in `core/models.ts` are what the UI consumes. Raw TMDB shapes stay inside `core/tmdb`.
 - **Routing:** the player routes sit outside the app shell, so they have no navigation bar. Filters, season and search query live in the URL.
 - **Watchlist** is stored in localStorage and synced across tabs.
+- **Watch progress** (`core/progress.ts`) uses VidFast's `MEDIA_DATA` shape (`m{id}` / `t{id}` keys, `show_progress` per episode) so its messages merge in directly, newest `last_updated` wins. The player also records from its own `PLAYER_EVENT` reports every 5 seconds, ignoring positions under 10 seconds so a fresh embed reporting 0 cannot erase a resume point. The resume point is read once per episode when it opens, so saving never changes the iframe URL. Under 30 seconds is not worth resuming; 95% (or the last two minutes) counts as finished.
 
 ## Design rules in force
 
@@ -88,7 +89,7 @@ The owner asked for four skills to be followed: *design-taste-frontend*, *apple-
 None of these are committed to; they are known gaps.
 
 - **Custom trailer controls:** offered to the owner, no answer yet. This would use the YouTube IFrame Player API with `controls=0`, so trailers match the player design.
-- **Player:** VidFast's commands and events were built from its documentation and tested only against a stand-in, because the sandbox blocks `vidfast.vc`; confirm them against the real embed. There is no resume position yet: VidFast's `MEDIA_DATA` message carries per-title progress that could feed `startAt`. Speed and audio track are not in the API. Keyboard shortcuts stop while focus is inside the embed (only reachable in VidFast-controls mode).
+- **Player:** VidFast's commands and events were built from its documentation and tested only against a stand-in, because the sandbox blocks `vidfast.vc`; confirm them against the real embed. Speed and audio track are not in the API. Keyboard shortcuts stop while focus is inside the embed (only reachable in VidFast-controls mode).
 - **Browse grid:** not virtualised. Very long infinite scrolls grow the DOM. `content-visibility` or virtualisation would help.
 - **Language and region:** TMDB requests are fixed to `en-US`, and certifications prefer the US. Date and number formatting already follows the browser's locale.
 - **Watchlist** is per browser, with no accounts or sync.

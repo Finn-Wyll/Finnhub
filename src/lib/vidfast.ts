@@ -69,17 +69,25 @@ interface EventData {
 
 const initial: PlayerStatus = { ready: false, playing: false, currentTime: 0, duration: 0, volume: 1, muted: false };
 
+export interface BridgeEvents {
+  onEnded?: () => void;
+  /** Every PLAYER_EVENT, after state is updated. */
+  onEvent?: (event: EventData['event'], status: { currentTime: number; duration: number }) => void;
+  /** VidFast's full progress object (MEDIA_DATA), untrusted: validate before use. */
+  onMediaData?: (data: unknown) => void;
+}
+
 /**
  * Bridge to one embed instance. `instance` must change whenever the iframe
  * reloads (new src), so state starts fresh for the new player.
  */
-export function useVidfast(frame: RefObject<HTMLIFrameElement | null>, instance: string, onEnded?: () => void) {
+export function useVidfast(frame: RefObject<HTMLIFrameElement | null>, instance: string, events: BridgeEvents = {}) {
   const [status, setStatus] = useState<PlayerStatus>(initial);
   const origin = useRef<string>('*');
   // After a local seek, ignore periodic time reports until the embed catches up.
   const holdTimeUntil = useRef(0);
-  const endedRef = useRef(onEnded);
-  endedRef.current = onEnded;
+  const eventsRef = useRef(events);
+  eventsRef.current = events;
 
   useEffect(() => {
     setStatus(initial);
@@ -98,7 +106,12 @@ export function useVidfast(frame: RefObject<HTMLIFrameElement | null>, instance:
     const onMessage = (e: MessageEvent) => {
       if (!ORIGINS.has(e.origin) || e.source !== frame.current?.contentWindow) return;
       const msg = e.data as { type?: string; data?: EventData } | null;
-      if (!msg || msg.type !== 'PLAYER_EVENT' || !msg.data) return;
+      if (!msg || !msg.data) return;
+      if (msg.type === 'MEDIA_DATA') {
+        eventsRef.current.onMediaData?.(msg.data);
+        return;
+      }
+      if (msg.type !== 'PLAYER_EVENT') return;
       origin.current = e.origin;
       const d = msg.data;
       const holding = d.event === 'timeupdate' && performance.now() < holdTimeUntil.current;
@@ -111,7 +124,8 @@ export function useVidfast(frame: RefObject<HTMLIFrameElement | null>, instance:
         volume: num(d.volume, s.volume),
         muted: d.muted ?? s.muted,
       }));
-      if (d.event === 'ended') endedRef.current?.();
+      eventsRef.current.onEvent?.(d.event, { currentTime: num(d.currentTime, 0), duration: num(d.duration, 0) });
+      if (d.event === 'ended') eventsRef.current.onEnded?.();
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);

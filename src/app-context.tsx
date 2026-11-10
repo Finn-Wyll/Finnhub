@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, u
 import { TmdbClient } from './core/tmdb/client';
 import { KEYS, webStore } from './core/storage';
 import { Watchlist } from './core/watchlist';
+import { WatchProgress } from './core/progress';
 import { env } from './lib/env';
 
 export type ThemePref = 'system' | 'dark' | 'light';
@@ -13,12 +14,14 @@ interface AppState {
   setCredential: (value: string | null) => void;
   makeClient: (credential: string) => TmdbClient;
   watchlist: Watchlist;
+  progress: WatchProgress;
   theme: ThemePref;
   setTheme: (t: ThemePref) => void;
 }
 
 const Ctx = createContext<AppState | null>(null);
 const watchlist = new Watchlist(webStore);
+const progress = new WatchProgress(webStore);
 
 const makeClient = (credential: string) =>
   new TmdbClient({ apiBase: env.apiBase, imageBase: env.imageBase, credential });
@@ -49,7 +52,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [theme]);
 
   const value = useMemo<AppState>(
-    () => ({ client, credential, credentialSource, setCredential, makeClient, watchlist, theme, setTheme }),
+    () => ({ client, credential, credentialSource, setCredential, makeClient, watchlist, progress, theme, setTheme }),
     [client, credential, credentialSource, setCredential, theme, setTheme],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -72,4 +75,11 @@ export function useWatchlist() {
   const { watchlist } = useApp();
   const entries = useSyncExternalStore(watchlist.subscribe, watchlist.all, watchlist.all);
   return { entries, has: watchlist.has.bind(watchlist), toggle: watchlist.toggle.bind(watchlist) };
+}
+
+/** Watch progress for resume and Continue Watching. Re-renders when it changes (also from other tabs). */
+export function useProgress() {
+  const { progress } = useApp();
+  const all = useSyncExternalStore(progress.subscribe, progress.all, progress.all);
+  return { all, store: progress };
 }

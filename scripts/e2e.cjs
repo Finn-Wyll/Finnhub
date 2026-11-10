@@ -24,7 +24,7 @@ const FAKE_VIDFAST = `<!doctype html><body style="margin:0;background:#000"><scr
   addEventListener('message', ({ data }) => {
     if (!data || !data.command) return;
     window.commands.push(data.command);
-    if (data.command === 'play') { playing = true; ev('play'); }
+    if (data.command === 'play') { playing = true; ev('play'); mediaData(); }
     else if (data.command === 'pause') { playing = false; ev('pause'); }
     else if (data.command === 'seek') { t = data.time; ev('seeked'); }
     else if (data.command === 'volume') { volume = data.level; ev('timeupdate'); }
@@ -32,6 +32,14 @@ const FAKE_VIDFAST = `<!doctype html><body style="margin:0;background:#000"><scr
     else if (data.command === 'getStatus') ev('playerstatus');
   });
   setInterval(() => { if (playing) { t += 1; ev('timeupdate'); } }, 1000);
+  // VidFast's MEDIA_DATA: its whole progress store. The fake reports 10:00 watched of whatever is open.
+  function mediaData() {
+    const [, type, id, s, e] = location.pathname.split('/');
+    const now = Date.now(), progress = { watched: 600, duration: d };
+    const entry = { id: +id, type, title: 'Fake ' + id, poster_path: null, backdrop_path: null, progress, last_updated: now };
+    if (type === 'tv') Object.assign(entry, { last_season_watched: +s, last_episode_watched: +e, show_progress: { ['s' + s + 'e' + e]: { season: +s, episode: +e, progress, last_updated: now } } });
+    parent.postMessage({ type: 'MEDIA_DATA', data: { [(type === 'tv' ? 't' : 'm') + id]: entry } }, '*');
+  }
 </script></body>`;
 const assert = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 1; } else console.log('ok  ', m); };
 (async () => {
@@ -120,6 +128,20 @@ const assert = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 
   // Film embed
   await p.goto(base + '/watch/movie/1001'); await p.waitForTimeout(800);
   assert((await embedSrc()).startsWith('https://vidfast.vc/movie/1001?autoPlay=true'), 'player embeds vidfast film URL');
+  // Resume watching from MEDIA_DATA progress (the fake sends 10:00 watched on play)
+  await p.keyboard.press('k'); await p.waitForTimeout(600);
+  await p.goto(base + '/'); await p.waitForTimeout(1200);
+  assert(await p.getByRole('heading', { name: 'Continue Watching' }).isVisible() && (await p.locator('a[href="/watch/movie/1001"]').count()) === 1, 'home shows Continue Watching');
+  await p.getByRole('button', { name: 'Remove Fake 1001 from Continue Watching' }).click({ force: true }); await p.waitForTimeout(300);
+  assert((await p.locator('a[href="/watch/movie/1001"]').count()) === 0, 'remove from Continue Watching');
+  await p.goto(base + '/watch/movie/1001'); await p.waitForTimeout(1500);
+  await p.keyboard.press('k'); await p.waitForTimeout(600);
+  await p.goto(base + '/title/movie/1001'); await p.waitForTimeout(1000);
+  assert(await p.getByRole('link', { name: 'Resume', exact: true }).isVisible() && await p.getByText('10:00 of 30:00').isVisible(), 'title page offers Resume with progress');
+  await p.getByRole('link', { name: 'Resume', exact: true }).click(); await p.waitForTimeout(1500);
+  assert(/[?&]startAt=600(&|$)/.test(await embedSrc()) && await p.getByText('Resumed at').isVisible(), 'player resumes at the saved time');
+  await p.getByRole('button', { name: 'Start Over' }).click(); await p.waitForTimeout(400);
+  assert((await embed().evaluate(() => window.commands)).includes('seek') && !(await p.getByText('Resumed at').isVisible()), 'Start Over seeks to the beginning');
   // Trailer dialog
   await p.goto(base + '/title/movie/1001'); await p.waitForTimeout(1000);
   await p.getByRole('button', { name: 'Watch trailer' }).click(); await p.waitForTimeout(500);
