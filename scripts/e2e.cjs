@@ -71,21 +71,19 @@ const assert = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 
   assert(p.url().includes('season=2'), 'season in URL');
   await p.locator('a[href="/watch/tv/3003/2/3"]').click(); await p.waitForTimeout(1200);
   assert(await p.getByText('S2 E3').first().isVisible(), 'player opened on S2E3');
-  // Player shortcuts
-  await p.keyboard.press('k'); await p.waitForTimeout(300);
-  assert(await p.locator('button[aria-label="Pause"]').first().isVisible(), 'k toggles play');
-  await p.keyboard.press('l'); await p.waitForTimeout(200);
-  const t = await p.getByRole('slider', { name: 'Seek' }).getAttribute('aria-valuetext');
-  assert(/^0:1\d of/.test(t), 'l skips +10s: ' + t);
-  await p.keyboard.press('c'); await p.waitForTimeout(200);
-  assert(await p.getByText('[Sample subtitle line]').isVisible(), 'c toggles captions');
+  // Player embed
+  assert((await p.locator('iframe').getAttribute('src')) === 'https://vidfast.vc/tv/3003/2/3?autoPlay=true', 'player embeds vidfast episode URL');
+  await p.keyboard.press('e'); await p.waitForTimeout(600);
+  assert(await p.getByRole('button', { name: 'Episodes', exact: true }).getAttribute('aria-expanded') === 'true', 'e opens episode sheet');
+  await p.keyboard.press('e'); await p.waitForTimeout(400);
   await p.keyboard.press('n'); await p.waitForTimeout(1000);
   assert(p.url().endsWith('/watch/tv/3003/2/4'), 'n goes to next episode');
-  await p.getByRole('button', { name: 'Subtitles' }).click(); await p.waitForTimeout(400);
-  await p.getByRole('radio', { name: 'Spanish' }).click(); await p.keyboard.press('Escape'); await p.waitForTimeout(400);
-  assert(await p.getByText('[Subtitulos de ejemplo]').isVisible(), 'subtitle menu selects');
+  assert((await p.locator('iframe').getAttribute('src')) === 'https://vidfast.vc/tv/3003/2/4?autoPlay=true', 'embed follows next episode');
   await p.getByRole('button', { name: 'Exit player' }).click(); await p.waitForTimeout(800);
   assert(p.url().includes('/title/tv/3003'), 'back returns to title');
+  // Film embed
+  await p.goto(base + '/watch/movie/1001'); await p.waitForTimeout(800);
+  assert((await p.locator('iframe').getAttribute('src')) === 'https://vidfast.vc/movie/1001?autoPlay=true', 'player embeds vidfast film URL');
   // Trailer dialog
   await p.goto(base + '/title/movie/1001'); await p.waitForTimeout(1000);
   await p.getByRole('button', { name: 'Watch trailer' }).click(); await p.waitForTimeout(500);

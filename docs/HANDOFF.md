@@ -6,7 +6,7 @@ Status as of 10 November 2026. Written for the next agent picking this up.
 
 A film and series browser on the TMDB catalogue. It is a React + Vite single-page app, deployed on Cloudflare. The owner may later port it to macOS in SwiftUI.
 
-Everything works against real TMDB data except one screen: the **player** (`/watch/...`). The player is a **design mockup**. Its stage is an intentionally empty iframe, and its controls only change UI state. The owner asked for this explicitly: "The controls will not be functional, this is just to see how a custom designed video application would look... everything else must work properly." The empty iframe is by design and out of scope; do not treat it as a bug.
+Everything works against real TMDB data, including the **player** (`/watch/...`), which is now in scope. It embeds `https://vidfast.vc/movie/{id}?autoPlay=true` for films and `https://vidfast.vc/tv/{id}/{season}/{episode}?autoPlay=true` for episodes in an iframe, using the TMDB id. The embedded page brings its own playback controls; our chrome is a slim top bar above the stage (exit, title, episode sheet, next episode) and must not cover the embed. The earlier custom-controls mockup (scrubber, menus, fake clock) has been removed.
 
 ## Where things are
 
@@ -16,7 +16,7 @@ Everything works against real TMDB data except one screen: the **player** (`/wat
 | Branches | `main` (production) and `claude/magical-fermi-yxv14o`. Both currently point to the same commit; keep them in sync if you are told to work on the `claude/` branch. GitHub's default branch may still be the `claude/` one, since it was pushed first. |
 | Hosting | Cloudflare Workers static assets, using Cloudflare's own Git integration. Every push to `main` builds and deploys. The production URL is in the owner's Cloudflare dashboard. |
 | TMDB key | Set as the **build** variable `VITE_TMDB_API_KEY` in Cloudflare (Worker, Settings, Build, Variables and secrets). It is compiled into the client bundle, so it is readable from the page source; that was accepted. Never commit a key to the repo. |
-| Cloud sandbox | A personal environment named "Finnhub" allows `api.themoviedb.org`, `image.tmdb.org`, `www.youtube.com`, `www.youtube-nocookie.com`, `i.ytimg.com` and `www.gstatic.com`. YouTube video streams (`*.googlevideo.com`) are still blocked, so embeds load but show a spinner. |
+| Cloud sandbox | A personal environment named "Finnhub" allows `api.themoviedb.org`, `image.tmdb.org`, `www.youtube.com`, `www.youtube-nocookie.com`, `i.ytimg.com` and `www.gstatic.com`. YouTube video streams (`*.googlevideo.com`) are still blocked, so embeds load but show a spinner. `vidfast.vc` is not allowed either, so the player stage shows a proxy error page in the sandbox; check real playback in a normal browser. |
 
 ## Run, build, test
 
@@ -42,7 +42,7 @@ npx wrangler dev --port 8788    # serve dist/ the way Cloudflare does (SPA fallb
 
 There is no unit test suite and no linter installed. The `eslint-disable` comments in the hooks are leftovers; nothing enforces them.
 
-**End-to-end smoke test:** `scripts/e2e.cjs` runs 28 checks against the mock: onboarding and key validation, watchlist, genre and sort in the URL, infinite scroll, search, the `/` shortcut, seasons, player keyboard shortcuts, menus, next episode, trailer dialog, theme, and 404. The setup steps are in the comment at the top of the file. It needs Playwright, which is pre-installed in the cloud sandbox but is not a project dependency. All 28 checks passed at handoff.
+**End-to-end smoke test:** `scripts/e2e.cjs` runs 28 checks against the mock: onboarding and key validation, watchlist, genre and sort in the URL, infinite scroll, search, the `/` shortcut, seasons, the player embed URL, the episode sheet shortcut, next episode, trailer dialog, theme, and 404. The setup steps are in the comment at the top of the file. It needs Playwright, which is pre-installed in the cloud sandbox but is not a project dependency. The player checks were rewritten for the embedded player. All 28 checks passed after that change.
 
 **Mock details:** `scripts/mock-tmdb.mjs` serves generated SVG artwork and deterministic sample titles (movie ids 1000 to 1089, TV ids 3000 to 3059, people 5000 to 5039). The key `bad` returns 401; any other key is accepted.
 
@@ -53,7 +53,7 @@ src/core/        framework-free: models, TMDB client (cache + in-flight dedupe),
 src/design/      tokens.json, the single source of truth for colours, radii, type and springs
 src/lib/         motion.ts (Anime.js springs), format.ts (Intl formatting), env.ts
 src/hooks/       useQuery, useInfinite, useEnter, useDocumentTitle
-src/components/  UI building blocks; player/ holds the player chrome
+src/components/  UI building blocks; player/ holds the player top-bar button and episode sheet
 src/routes/      Home, Browse, Title, Person, Search, Watchlist, Settings, Onboarding, Player, NotFound
 docs/SWIFT_PORT.md   how each layer maps onto SwiftUI
 ```
@@ -88,7 +88,7 @@ The owner asked for four skills to be followed: *design-taste-frontend*, *apple-
 None of these are committed to; they are known gaps.
 
 - **Custom trailer controls:** offered to the owner, no answer yet. This would use the YouTube IFrame Player API with `controls=0`, so trailers match the player design.
-- **Picture-in-picture button** in the player mockup does nothing, by design for now.
+- **Player embed** is a third-party page: we cannot see its playback state, so there is no resume position, up-next card or auto-advance. The `E` and `N` shortcuts only work while focus is outside the iframe.
 - **Browse grid:** not virtualised. Very long infinite scrolls grow the DOM. `content-visibility` or virtualisation would help.
 - **Language and region:** TMDB requests are fixed to `en-US`, and certifications prefer the US. Date and number formatting already follows the browser's locale.
 - **Watchlist** is per browser, with no accounts or sync.
