@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "preview": "vite preview",
-    "mock": "node scripts/mock-tmdb.mjs"
+    "mock": "node scripts/mock-tmdb.mjs",
+    "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
@@ -28,6 +29,7 @@
     "@vitejs/plugin-react": "^6.3.0",
     "tailwindcss": "^4.3.5",
     "typescript": "~5.9",
-    "vite": "^8.3.7"
+    "vite": "^8.3.7",
+    "wrangler": "^4.160.0"
   }
 }

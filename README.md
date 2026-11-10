@@ -20,6 +20,22 @@ Without a key in the environment, the app asks for one on first launch and store
 | `npm run dev:mock` | Dev server against the offline mock |
 | `npm run build` | Type-check and production build to `dist/` |
 | `npm run preview` | Serve the production build |
+| `npm run deploy` | Build and deploy to Cloudflare (`wrangler deploy`) |
+
+## Deploy (Cloudflare, free)
+
+The app is a static build, configured for Cloudflare Workers static assets in `wrangler.jsonc`. Unknown paths fall back to `index.html`, so deep links survive a refresh. `public/_headers` caches the fingerprinted `/assets` files forever and adds basic security headers.
+
+**From the dashboard (auto-deploys on every push):** Workers & Pages, Create, Import a repository, pick this repo. Build command `npm run build`, deploy command `npx wrangler deploy`.
+
+**From your machine:**
+
+```bash
+npx wrangler login
+npm run deploy
+```
+
+Leave `VITE_TMDB_API_KEY` unset for a public site so each visitor enters their own key. If you set it as a build variable instead, it is compiled into the JavaScript and readable by anyone.
 
 ## What is in it
 
