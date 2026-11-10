@@ -22,7 +22,7 @@ Before you design, restyle or animate any UI (new components, layout changes, mo
 
 ## Player
 
-`src/routes/Player.tsx` embeds `https://vidfast.vc/movie/{id}` and `https://vidfast.vc/tv/{id}/{season}/{episode}` (always `autoPlay=true`). Our custom controls drive it through VidFast's postMessage API via `src/lib/vidfast.ts`: only show state the embed reported, never fake it, and check `event.origin` against the VidFast origin list. Anything the API cannot do goes through the hand-over to VidFast's own controls, where our bar sits above the stage instead of over it. Add `?debug=player` to a watch URL to log the bridge's traffic in the console. Watch progress lives in `src/core/progress.ts` (VidFast's `MEDIA_DATA` shape); use `useContinue()` for any Play button so it resumes. `scripts/e2e.cjs` stubs vidfast.vc with a fake that speaks the same API, including `MEDIA_DATA`.
+`src/routes/Player.tsx` embeds `https://vidfast.vc/movie/{id}` and `https://vidfast.vc/tv/{id}/{season}/{episode}` (always `autoPlay=true`). VidFast ignores its documented playback commands and clicks inside it open ad pop-ups, so the embed must never receive pointer events, focus or screen-reader access, and must not be sandboxed (it refuses to run). Playback is driven by reloading the embed with `startAt` (see the "session" logic in Player.tsx; `docs/HANDOFF.md` has the details). Only show state the embed reported, and check `event.origin` against the VidFast domains (`src/lib/vidfast.ts`). Add `?debug=player` to a watch URL to log its messages. Watch progress lives in `src/core/progress.ts` (VidFast's `MEDIA_DATA` shape); use `useContinue()` for any Play button so it resumes. `scripts/e2e.cjs` stubs vidfast.vc with a fake that behaves like the real embed.
 
 ## Before committing
 

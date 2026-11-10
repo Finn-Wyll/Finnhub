@@ -2,8 +2,15 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { MediaType } from '../core/models';
 
 /**
- * VidFast embed: URL building plus the postMessage bridge (commands out,
- * PLAYER_EVENT in). See https://vidfast.vc/ (Documentation section).
+ * VidFast embed: URL building plus a listening bridge for the events it posts.
+ *
+ * VidFast documents play/pause/seek/volume/mute postMessage commands, but its
+ * current player ignores all of them (read from its shipped code, November 2026,
+ * on vidfast.vc and vidcore.io alike); only `getStatus` is answered. So playback
+ * is driven through the embed URL instead (see Player.tsx): every play, seek or
+ * subtitle change loads a new embed at the right second with `startAt` and
+ * `autoPlay`, and pausing unloads it. What the embed reports back (PLAYER_EVENT,
+ * MEDIA_DATA, a 404 status) is still used for state and progress.
  */
 
 export const VIDFAST_BASE = 'https://vidfast.vc';
@@ -22,8 +29,7 @@ export function isVidfastOrigin(origin: string) {
 
 /**
  * Debug logging for the bridge: add `?debug=player` to a /watch URL (it is
- * remembered for the tab) to log every message the page receives and every
- * command it sends.
+ * remembered for the tab) to log every message the page receives.
  */
 function debugEnabled() {
   try {
@@ -43,7 +49,7 @@ function parse(raw: unknown): { type?: string; data?: unknown; event?: string } 
       return null;
     }
   }
-  return raw && typeof raw === 'object' ? (raw as { type?: string; data?: unknown }) : null;
+  return raw && typeof raw === 'object' ? (raw as { type?: string; data?: unknown; event?: string }) : null;
 }
 
 /** Player accent (tokens.json dark accent), without the leading #. */
@@ -52,8 +58,12 @@ const THEME = 'F2B33D';
 export interface EmbedOptions {
   /** Subtitle language code, or null for none. */
   sub: string | null;
-  /** Start position in whole seconds. */
-  startAt: number;
+  /**
+   * Second to start at, or null to let VidFast pick (it resumes from its own
+   * saved progress). VidFast treats `startAt=0` as unset, so an explicit start
+   * from the beginning is sent as 0.1.
+   */
+  startAt: number | null;
 }
 
 export function vidfastUrl(type: MediaType, id: number, season: number, episode: number, { sub, startAt }: EmbedOptions) {
@@ -61,61 +71,51 @@ export function vidfastUrl(type: MediaType, id: number, season: number, episode:
   // Our chrome supplies the title and fullscreen, so the embed's copies are hidden.
   const q = new URLSearchParams({ autoPlay: 'true', title: 'false', fullscreenButton: 'false', theme: THEME });
   if (sub) q.set('sub', sub);
-  if (startAt > 0) q.set('startAt', String(Math.floor(startAt)));
+  if (startAt !== null) q.set('startAt', startAt >= 1 ? String(Math.floor(startAt)) : '0.1');
   return `${VIDFAST_BASE}${path}?${q}`;
 }
 
 export interface PlayerStatus {
-  /** True once the embed has answered at least once. */
+  /** True once this embed instance has reported at least once. */
   ready: boolean;
+  /** True between a `play` event and the next `pause`/`ended`. */
   playing: boolean;
   currentTime: number;
   duration: number;
-  volume: number;
-  muted: boolean;
 }
 
-type Command =
-  | { command: 'play' }
-  | { command: 'pause' }
-  | { command: 'seek'; time: number }
-  | { command: 'volume'; level: number }
-  | { command: 'mute'; muted: boolean }
-  | { command: 'getStatus' };
+export type PlayerEvent = 'play' | 'pause' | 'seeked' | 'ended' | 'timeupdate' | 'playerstatus';
 
 interface EventData {
-  event: 'play' | 'pause' | 'seeked' | 'ended' | 'timeupdate' | 'playerstatus';
+  event: PlayerEvent;
   currentTime?: number;
   duration?: number;
   playing?: boolean;
-  muted?: boolean;
-  volume?: number;
 }
 
-const initial: PlayerStatus = { ready: false, playing: false, currentTime: 0, duration: 0, volume: 1, muted: false };
+const initial: PlayerStatus = { ready: false, playing: false, currentTime: 0, duration: 0 };
 
 export interface BridgeEvents {
   onEnded?: () => void;
   /** Every PLAYER_EVENT, after state is updated. */
-  onEvent?: (event: EventData['event'], status: { currentTime: number; duration: number }) => void;
+  onEvent?: (event: PlayerEvent, status: { currentTime: number; duration: number }) => void;
   /** VidFast's full progress object (MEDIA_DATA), untrusted: validate before use. */
   onMediaData?: (data: unknown) => void;
+  /** None of VidFast's servers can play this title. */
+  onUnavailable?: () => void;
 }
 
 /**
- * Bridge to one embed instance. `instance` must change whenever the iframe
- * reloads (new src), so state starts fresh for the new player.
+ * Listening bridge for one embed instance. `instance` must change whenever the
+ * iframe reloads, so state starts fresh for the new player.
  */
 export function useVidfast(frame: RefObject<HTMLIFrameElement | null>, instance: string, events: BridgeEvents = {}) {
   const [status, setStatus] = useState<PlayerStatus>(initial);
-  // After a local seek, ignore periodic time reports until the embed catches up.
-  const holdTimeUntil = useRef(0);
   const eventsRef = useRef(events);
   eventsRef.current = events;
 
   useEffect(() => {
     setStatus(initial);
-    holdTimeUntil.current = 0;
   }, [instance]);
 
   const debug = useRef(false);
@@ -123,22 +123,16 @@ export function useVidfast(frame: RefObject<HTMLIFrameElement | null>, instance:
     debug.current = debugEnabled();
   }, []);
 
-  // Commands go to the iframe with targetOrigin '*', as VidFast's docs do: the embed
-  // may redirect or host its player on another VidFast domain, and a targeted origin
-  // that does not match is dropped silently. The commands carry nothing sensitive.
-  const send = useCallback(
-    (cmd: Command) => {
-      if (debug.current) console.info('[vidfast] send', cmd);
-      frame.current?.contentWindow?.postMessage(cmd, '*');
-    },
-    [frame],
-  );
+  // getStatus is the one command VidFast answers. targetOrigin '*' as in its docs:
+  // the embed may redirect to another VidFast domain, and the request carries nothing sensitive.
+  const requestStatus = useCallback(() => {
+    frame.current?.contentWindow?.postMessage({ command: 'getStatus' }, '*');
+  }, [frame]);
 
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (debug.current) console.info('[vidfast] receive', e.origin, e.source === frame.current?.contentWindow ? '(our iframe)' : '(other frame)', e.data);
-      // Origin is the trust boundary. The sender may be a player nested inside our
-      // iframe rather than the iframe itself, so the source window is not compared.
+      // Origin is the trust boundary; the source window is not compared, in case the player is nested.
       if (!isVidfastOrigin(e.origin)) return;
       const msg = parse(e.data);
       if (!msg) return;
@@ -146,19 +140,19 @@ export function useVidfast(frame: RefObject<HTMLIFrameElement | null>, instance:
         if (msg.data) eventsRef.current.onMediaData?.(msg.data);
         return;
       }
+      // Undocumented: { event: "status", data: 404 } when every server failed.
+      if (msg.event === 'status' && msg.data === 404) {
+        eventsRef.current.onUnavailable?.();
+        return;
+      }
       if (msg.type !== 'PLAYER_EVENT') return;
-      // Documented shape is { type, data: { event, ... } }; tolerate the fields at the top level too.
       const d = (msg.data && typeof msg.data === 'object' ? msg.data : msg) as EventData;
       if (typeof d.event !== 'string') return;
-      const holding = d.event === 'timeupdate' && performance.now() < holdTimeUntil.current;
-      if (d.event === 'seeked') holdTimeUntil.current = 0;
       setStatus((s) => ({
         ready: true,
         playing: d.event === 'play' ? true : d.event === 'pause' || d.event === 'ended' ? false : d.playing ?? s.playing,
-        currentTime: holding ? s.currentTime : num(d.currentTime, s.currentTime),
+        currentTime: num(d.currentTime, s.currentTime),
         duration: num(d.duration, s.duration) || s.duration,
-        volume: num(d.volume, s.volume),
-        muted: d.muted ?? s.muted,
       }));
       eventsRef.current.onEvent?.(d.event, { currentTime: num(d.currentTime, 0), duration: num(d.duration, 0) });
       if (d.event === 'ended') eventsRef.current.onEnded?.();
@@ -167,41 +161,14 @@ export function useVidfast(frame: RefObject<HTMLIFrameElement | null>, instance:
     return () => window.removeEventListener('message', onMessage);
   }, [frame]);
 
-  // Ask for status until the embed answers, so controls reflect it even if autoplay was blocked.
+  // Ask for status until the embed answers.
   useEffect(() => {
     if (status.ready) return;
-    const t = window.setInterval(() => send({ command: 'getStatus' }), 1000);
+    const t = window.setInterval(requestStatus, 1000);
     return () => window.clearInterval(t);
-  }, [status.ready, send, instance]);
+  }, [status.ready, requestStatus, instance]);
 
-  const controls = {
-    play: () => {
-      send({ command: 'play' });
-      setStatus((s) => ({ ...s, playing: true }));
-    },
-    pause: () => {
-      send({ command: 'pause' });
-      setStatus((s) => ({ ...s, playing: false }));
-    },
-    seek: (seconds: number) => {
-      const time = Math.round(Math.max(0, status.duration ? Math.min(status.duration, seconds) : seconds));
-      holdTimeUntil.current = performance.now() + 2000;
-      send({ command: 'seek', time });
-      setStatus((s) => ({ ...s, currentTime: time }));
-    },
-    volume: (level: number) => {
-      const v = Math.min(1, Math.max(0, level));
-      send({ command: 'volume', level: v });
-      if (status.muted && v > 0) send({ command: 'mute', muted: false });
-      setStatus((s) => ({ ...s, volume: v, muted: v > 0 ? false : s.muted }));
-    },
-    mute: (muted: boolean) => {
-      send({ command: 'mute', muted });
-      setStatus((s) => ({ ...s, muted }));
-    },
-  };
-
-  return { status, controls };
+  return { status };
 }
 
 function num(v: unknown, fallback: number) {

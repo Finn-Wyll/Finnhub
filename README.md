@@ -1,6 +1,6 @@
 # Finnhub
 
-A modern film and series browser built on the TMDB catalogue. You can browse, search, read title details, watch trailers and keep a watchlist. **Play** opens a full-screen player: VidFast plays the video in an iframe, and Finnhub's own controls drive it through VidFast's postMessage API.
+A modern film and series browser built on the TMDB catalogue. You can browse, search, read title details, watch trailers and keep a watchlist. **Play** opens a full-screen player: VidFast plays the video in an iframe that never receives a click, and Finnhub's own controls drive it by reloading it at the right second.
 
 ## Run it
 
@@ -47,7 +47,7 @@ Leave `VITE_TMDB_API_KEY` unset for a public site so each visitor enters their o
 - **Watchlist:** stored locally and synced across tabs.
 - **Resume watching:** the player saves progress from VidFast's `MEDIA_DATA` messages and its own time reports (`src/core/progress.ts`, stored locally, synced across tabs). Films and episodes reopen where you stopped, with a Start Over option; the title page's Play button becomes Resume (or the next episode once one is finished), episode rows show progress, and Home has a Continue Watching rail with a remove button per card.
 - **Settings:** theme (system, dark, light) and TMDB key management.
-- **Player** (`/watch/movie/:id`, `/watch/tv/:id/:season/:episode`): embeds `https://vidfast.vc/movie/{id}` or `https://vidfast.vc/tv/{id}/{season}/{episode}` (with `autoPlay=true`, VidFast's title and fullscreen button hidden, and the amber accent as its theme). Custom controls send VidFast's postMessage commands and follow the state it reports: play/pause, ±10s, scrubber with hover preview, volume and mute, subtitles (reloads the embed at the current time with `sub=`), episode side sheet, next episode, up-next card and auto-advance when an episode ends, real fullscreen, auto-hiding chrome. **Server & Quality** in the settings menu hands over to VidFast's own controls (the API cannot change those); the player does the same automatically if the embed never answers. Shortcuts: `Space`/`K` play, `J`/`L` or arrows seek, `↑`/`↓` volume, `M` mute, `C` subtitles, `F` fullscreen, `E` episodes, `N` next. The bridge lives in `src/lib/vidfast.ts`.
+- **Player** (`/watch/movie/:id`, `/watch/tv/:id/:season/:episode`): embeds `https://vidfast.vc/movie/{id}` or `https://vidfast.vc/tv/{id}/{season}/{episode}` with `autoPlay=true`, VidFast's title and fullscreen button hidden, and the amber accent as its theme. VidFast ignores its documented playback commands, and clicks inside its player open ad pop-ups, so the embed never receives a click, focus or screen-reader access. Instead every play, seek, ±10s skip, scrub, Start Over and subtitle change loads a fresh embed at the right second (`startAt`), and pause unloads it, leaving a still of the scene. VidFast's events keep the clock, progress, up-next card and auto-advance honest; a "Not Available Right Now" state appears when VidFast reports that no server can play the title. Volume follows the device. Shortcuts: `Space`/`K` play, `J`/`L` or arrows skip 10s, `C` subtitles, `F` fullscreen, `E` episodes, `N` next. The bridge lives in `src/lib/vidfast.ts`.
 
 ## Design system
 
