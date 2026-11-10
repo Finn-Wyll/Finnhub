@@ -131,6 +131,19 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
   useEffect(() => () => window.clearTimeout(idleTimer.current), []);
   const chromeVisible = !playing || !idle || menu !== null || sheet;
 
+  // The page reserves a scrollbar gutter (scrollbar-gutter: stable), which would
+  // shift this full-viewport overlay left of true centre. Release it while the player is open.
+  useEffect(() => {
+    const html = document.documentElement;
+    const prev = { gutter: html.style.scrollbarGutter, overflow: html.style.overflow };
+    html.style.scrollbarGutter = 'auto';
+    html.style.overflow = 'hidden';
+    return () => {
+      html.style.scrollbarGutter = prev.gutter;
+      html.style.overflow = prev.overflow;
+    };
+  }, []);
+
   useEffect(() => {
     const onFs = () => setFullscreen(document.fullscreenElement === root.current);
     document.addEventListener('fullscreenchange', onFs);
@@ -316,7 +329,7 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
             </span>
           </ControlButton>
           <ControlButton label={playing ? 'Pause' : 'Play'} size="xl" onClick={togglePlay} className="bg-white/14 backdrop-blur-xl hover:bg-white/20">
-            {playing ? <Pause size={34} weight="fill" aria-hidden /> : <Play size={34} weight="fill" className="translate-x-0.5" aria-hidden />}
+            {playing ? <Pause size={34} weight="fill" aria-hidden /> : <Play size={34} weight="fill" aria-hidden />}
           </ControlButton>
           <ControlButton label="Forward 10 seconds" size="lg" onClick={() => skip(10)} className="bg-black/25 backdrop-blur-md">
             <ArrowClockwise size={32} aria-hidden />
