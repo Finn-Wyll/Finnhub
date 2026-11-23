@@ -7,6 +7,7 @@ import {
   ClockClockwise,
   ClockCounterClockwise,
   ClosedCaptioning,
+  HardDrives,
   Pause,
   Play,
   Queue,
@@ -28,7 +29,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useQuery } from '../hooks/useQuery';
 import { clock } from '../lib/format';
 import { enter, prefersReducedMotion, springs } from '../lib/motion';
-import { useVidfast, vidfastUrl } from '../lib/vidfast';
+import { SOURCE_ORDER, SOURCES, useVidfast, vidfastUrl, type Source } from '../lib/vidfast';
 import NotFound from './NotFound';
 
 /**
@@ -67,6 +68,16 @@ const NO_ANSWER_MS = 15000;
 /** Skips and scrubs that land within this window are combined into one reload. */
 const SEEK_SETTLE_MS = 600;
 
+const SOURCE_KEY = 'finnhub.player.source';
+const readSource = (): Source => {
+  try {
+    const v = sessionStorage.getItem(SOURCE_KEY);
+    return v && v in SOURCES ? (v as Source) : 'vidfast';
+  } catch {
+    return 'vidfast';
+  }
+};
+
 const SUB_KEY = 'finnhub.player.sub';
 const readSub = () => {
   try {
@@ -98,6 +109,7 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
   const frameRef = useRef<HTMLIFrameElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
   const captionsBtn = useRef<HTMLButtonElement>(null);
+  const sourceBtn = useRef<HTMLButtonElement>(null);
   const upNextRef = useRef<HTMLAnchorElement>(null);
   const chipRef = useRef<HTMLDivElement>(null);
 
@@ -118,6 +130,10 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
   const [pos, setPos] = useState(resumedFrom);
   const [dur, setDur] = useState(0);
   const [sub, setSubState] = useState<string | null>(readSub);
+  const [source, setSourceState] = useState<Source>(readSource);
+  // Sources already tried for this episode, so the automatic fallback never loops.
+  const tried = useRef(new Set<Source>([source]));
+  const [notice, setNotice] = useState<string | null>(null);
   const [pendingSeek, setPendingSeek] = useState<number | null>(null);
   const [problem, setProblem] = useState<'unavailable' | 'stuck' | null>(null);
   const [loadedN, setLoadedN] = useState<number | null>(null);
@@ -126,7 +142,7 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
   const sessionRef = useRef(session.n);
   sessionRef.current = session.n;
 
-  const src = vidfastUrl(type, id, season, episode, { sub, startAt: session.at });
+  const src = vidfastUrl(type, id, season, episode, { sub, startAt: session.at, source });
   const loaded = loadedN === session.n;
 
   const next = useMemo(() => nextEpisode(title, episodes, season, episode), [title, episodes, season, episode]);
@@ -181,6 +197,34 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
     return () => window.clearTimeout(t);
   }, [pendingSeek, startSession]);
 
+  /** Switch embed host and reload at the current second. */
+  const switchSource = useCallback(
+    (next: Source) => {
+      tried.current.add(next);
+      setSourceState(next);
+      try {
+        sessionStorage.setItem(SOURCE_KEY, next);
+      } catch {
+        /* not remembered across episodes; fine */
+      }
+      startSession(pos);
+    },
+    [pos, startSession],
+  );
+
+  // Automatic fallback: when a host cannot play the title, or never responds, try the next untried one.
+  useEffect(() => {
+    if (!problem) return;
+    const next = SOURCE_ORDER.find((x) => !tried.current.has(x));
+    if (!next) {
+      // Every source failed: the problem screen says so, and a stale "now playing" notice must not.
+      setNotice(null);
+      return;
+    }
+    setNotice(`${SOURCES[source].label} could not play this, so ${SOURCES[next].label} is playing it.`);
+    switchSource(next);
+  }, [problem, source, switchSource]);
+
   // "Starting" covers everything between asking to play and the embed's first `play` event.
   const hasPlayed = playedN === session.n;
   const starting = wantPlay && !problem && !hasPlayed;
@@ -194,7 +238,7 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
     return () => window.clearTimeout(t);
   }, [wantPlay, loaded, status.ready, problem, session.n]);
 
-  const [menu, setMenu] = useState<'captions' | null>(null);
+  const [menu, setMenu] = useState<'captions' | 'source' | null>(null);
   const [sheet, setSheet] = useState(false);
   const [idle, setIdle] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -357,8 +401,19 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
       document.removeEventListener('focusin', check);
     };
   }, []);
+  const noticeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const anim = noticeRef.current ? enter(noticeRef.current, { distance: -8 }) : null;
+    const t = window.setTimeout(() => setNotice(null), 7000);
+    return () => {
+      window.clearTimeout(t);
+      anim?.revert();
+    };
+  }, [notice]);
+
   // Sound hint: the embed started muted (the browser refused sound); M inside it unmutes without a click.
-  const mutedHint = playingNow && keysInEmbed && status.muted === true;
+  const mutedHint = playingNow && keysInEmbed && status.muted === true && !notice;
   const hintRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!mutedHint || !hintRef.current) return;
@@ -556,7 +611,7 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
             <p className="mt-3 text-lg font-semibold">{problem === 'unavailable' ? 'Not Available Right Now' : 'The Player Is Not Responding'}</p>
             <p className="mt-1 text-sm text-white/70">
               {problem === 'unavailable'
-                ? 'None of the streaming servers can play this title at the moment. Try again later.'
+                ? `None of ${SOURCES[source].label}’s servers can play this title at the moment.`
                 : 'It may be slow to connect. Trying again usually helps.'}
             </p>
             <div className="mt-5 flex justify-center gap-3">
@@ -567,6 +622,16 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
               >
                 Try Again
               </button>
+              {SOURCE_ORDER.filter((x) => x !== source).map((x) => (
+                <button
+                  key={x}
+                  type="button"
+                  onClick={() => switchSource(x)}
+                  className="press h-11 rounded-full bg-white/12 px-5 text-sm font-semibold outline-offset-2 hover:bg-white/18 focus-visible:bg-white/18"
+                >
+                  Try {SOURCES[x].label}
+                </button>
+              ))}
               <button
                 type="button"
                 onClick={exit}
@@ -640,6 +705,34 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
                   <p className="px-3 pb-2 text-xs text-white/55">Changing subtitles reloads the player where you are.</p>
                 </Popover>
               </div>
+              <div className="relative">
+                <ControlButton
+                  ref={sourceBtn}
+                  label="Source"
+                  aria-expanded={menu === 'source'}
+                  aria-haspopup="dialog"
+                  onClick={() => setMenu((m) => (m === 'source' ? null : 'source'))}
+                >
+                  <HardDrives size={22} aria-hidden />
+                </ControlButton>
+                <Popover open={menu === 'source'} onClose={() => setMenu(null)} anchor={sourceBtn.current} label="Source" className="w-60">
+                  <MenuGroup title="Source">
+                    {SOURCE_ORDER.map((x) => (
+                      <MenuOption
+                        key={x}
+                        checked={source === x}
+                        onSelect={() => {
+                          if (x !== source) switchSource(x);
+                          setMenu(null);
+                        }}
+                      >
+                        {SOURCES[x].label}
+                      </MenuOption>
+                    ))}
+                  </MenuGroup>
+                  <p className="px-3 pb-2 text-xs text-white/55">If a title will not play, try the other source. Switching reloads the player where you are.</p>
+                </Popover>
+              </div>
               <ControlButton label={fullscreen ? 'Exit full screen' : 'Full screen'} onClick={() => void toggleFullscreen()}>
                 {fullscreen ? <ArrowsIn size={22} aria-hidden /> : <ArrowsOut size={22} aria-hidden />}
               </ControlButton>
@@ -648,6 +741,12 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
         </div>
         )}
       </div>
+
+      {notice && (
+        <div ref={noticeRef} className="glass-dark pointer-events-none absolute left-1/2 top-[max(20px,env(safe-area-inset-top))] z-30 w-max max-w-[min(92vw,520px)] -translate-x-1/2 rounded-full px-4 py-2 text-center text-sm md:top-6" role="status">
+          {notice}
+        </div>
+      )}
 
       {mutedHint && (
         <div ref={hintRef} className="glass-dark pointer-events-none absolute left-1/2 top-[max(20px,env(safe-area-inset-top))] z-30 flex -translate-x-1/2 items-center gap-2.5 rounded-full py-2 pl-2 pr-4 md:top-6" role="status">

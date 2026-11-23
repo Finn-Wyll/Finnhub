@@ -15,10 +15,21 @@ import type { MediaType } from '../core/models';
  * (those listen for mousedown only), so the player hands keyboard focus to it.
  */
 
-export const VIDFAST_BASE = 'https://vidfast.vc';
+/**
+ * Embed hosts. VidCore (vidcore.io, where vidfast.bz redirects) serves a build of
+ * the same player: same URL parameters, events, keyboard shortcuts and quirks.
+ * It loads its ads from an external script instead of VidFast's bundled one; the
+ * same click shield applies.
+ */
+export const SOURCES = {
+  vidfast: { label: 'VidFast', base: 'https://vidfast.vc' },
+  vidcore: { label: 'VidCore', base: 'https://vidcore.io' },
+} as const;
+export type Source = keyof typeof SOURCES;
+export const SOURCE_ORDER: Source[] = ['vidfast', 'vidcore'];
 
-/** Every domain VidFast may post from (and their subdomains). Messages from anywhere else are ignored. */
-const DOMAINS = ['vidfast.pro', 'vidfast.in', 'vidfast.io', 'vidfast.me', 'vidfast.net', 'vidfast.pm', 'vidfast.xyz', 'vidfast.vc', 'vidfast.bz'];
+/** Every domain the embeds may post from (and their subdomains). Messages from anywhere else are ignored. */
+const DOMAINS = ['vidfast.pro', 'vidfast.in', 'vidfast.io', 'vidfast.me', 'vidfast.net', 'vidfast.pm', 'vidfast.xyz', 'vidfast.vc', 'vidfast.bz', 'vidcore.io'];
 
 export function isVidfastOrigin(origin: string) {
   try {
@@ -66,15 +77,17 @@ export interface EmbedOptions {
    * from the beginning is sent as 0.1.
    */
   startAt: number | null;
+  /** Which host to embed from. */
+  source: Source;
 }
 
-export function vidfastUrl(type: MediaType, id: number, season: number, episode: number, { sub, startAt }: EmbedOptions) {
+export function vidfastUrl(type: MediaType, id: number, season: number, episode: number, { sub, startAt, source }: EmbedOptions) {
   const path = type === 'movie' ? `/movie/${id}` : `/tv/${id}/${season}/${episode}`;
   // Our chrome supplies the title and fullscreen, so the embed's copies are hidden.
   const q = new URLSearchParams({ autoPlay: 'true', title: 'false', fullscreenButton: 'false', theme: THEME });
   if (sub) q.set('sub', sub);
   if (startAt !== null) q.set('startAt', startAt >= 1 ? String(Math.floor(startAt)) : '0.1');
-  return `${VIDFAST_BASE}${path}?${q}`;
+  return `${SOURCES[source].base}${path}?${q}`;
 }
 
 export interface PlayerStatus {

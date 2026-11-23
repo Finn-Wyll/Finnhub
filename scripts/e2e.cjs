@@ -46,7 +46,8 @@ const FAKE_VIDFAST = `<!doctype html><body style="margin:0;background:#000"><scr
     else if (k.code === 'ArrowLeft') { t = Math.max(0, t - 10); ev('seeked'); }
     else if (k.code === 'KeyM') { muted = !muted; ev('timeupdate'); }
   });
-  if (id === '1002') parent.postMessage({ event: 'status', data: 404 }, '*');
+  // 1002 fails on VidFast only (to exercise the fallback to VidCore); 1004 fails everywhere.
+  if ((id === '1002' && location.host === 'vidfast.vc') || id === '1004') parent.postMessage({ event: 'status', data: 404 }, '*');
   else {
     setTimeout(() => { playing = true; ev('play'); }, 300);
     setInterval(() => { if (playing) { t += 1; ev('timeupdate'); } }, 1000);
@@ -79,7 +80,8 @@ const assert = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 
 
   const p = await b.newPage(); p.on('pageerror', e => errs.push(e.message));
   await p.route('https://vidfast.vc/**', (r) => r.fulfill({ contentType: 'text/html', body: FAKE_VIDFAST }));
-  const embed = () => p.frames().find((f) => f.url().startsWith('https://vidfast.vc/'));
+  await p.route('https://vidcore.io/**', (r) => r.fulfill({ contentType: 'text/html', body: FAKE_VIDFAST }));
+  const embed = () => p.frames().find((f) => /^https:\/\/(vidfast\.vc|vidcore\.io)\//.test(f.url()));
   const embedSrc = () => p.locator('iframe').getAttribute('src');
   const base = process.env.BASE_URL || 'http://localhost:5173';
   // Watchlist
@@ -181,10 +183,24 @@ const assert = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 
   assert((await startAt()) === 600 && await p.getByText('Resumed at').isVisible(), 'player resumes at the saved time');
   await p.getByRole('button', { name: 'Start Over' }).click(); await p.waitForTimeout(500);
   assert(new URL(await embedSrc()).searchParams.get('startAt') === '0.1' && !(await p.getByText('Resumed at').isVisible()), 'Start Over reloads from the beginning (startAt=0.1, as 0 means unset)');
-  // Unavailable title
+  // Second source: VidCore. A title VidFast cannot play falls back to it automatically.
   await p.goto(base + '/watch/movie/1002'); await p.waitForTimeout(500);
-  await p.locator('button[aria-label="Play"]').first().click(); await p.waitForTimeout(1200);
-  assert(await p.getByText('Not Available Right Now', { exact: true }).isVisible() && await p.getByRole('button', { name: 'Try Again' }).isVisible(), 'unavailable title shows a clear message');
+  await p.locator('button[aria-label="Play"]').first().click(); await p.waitForTimeout(1800);
+  assert((await embedSrc()).startsWith('https://vidcore.io/movie/1002?') && await p.getByText('VidFast could not play this, so VidCore is playing it.').isVisible() && await p.locator('button[aria-label="Pause"]').first().isVisible(), 'unavailable on VidFast falls back to VidCore and plays');
+  // Unavailable on every source
+  await p.evaluate(() => sessionStorage.removeItem('finnhub.player.source'));
+  await p.goto(base + '/watch/movie/1004'); await p.waitForTimeout(500);
+  await p.locator('button[aria-label="Play"]').first().click(); await p.waitForTimeout(2500);
+  assert(await p.getByText('Not Available Right Now', { exact: true }).isVisible() && await p.getByRole('button', { name: 'Try Again' }).isVisible() && await p.getByRole('button', { name: 'Try VidFast' }).isVisible() && !(await p.getByText(/is playing it/).isVisible()), 'unavailable everywhere shows a clear message with a way to try the other source');
+  // Manual source switch keeps the position
+  await p.evaluate(() => sessionStorage.removeItem('finnhub.player.source'));
+  await p.goto(base + '/watch/movie/1003'); await p.waitForTimeout(500);
+  await p.locator('button[aria-label="Play"]').first().click(); await p.waitForTimeout(2500);
+  await p.evaluate(() => document.activeElement && document.activeElement.blur());
+  await p.getByRole('button', { name: 'Source' }).click(); await p.waitForTimeout(400);
+  await p.getByRole('radio', { name: 'VidCore' }).click(); await p.waitForTimeout(800);
+  assert((await embedSrc()).startsWith('https://vidcore.io/movie/1003?') && Number(new URL(await embedSrc()).searchParams.get('startAt')) >= 1, 'Source menu switches to VidCore at the current second');
+  await p.evaluate(() => sessionStorage.removeItem('finnhub.player.source'));
   // Trailer dialog
   await p.goto(base + '/title/movie/1001'); await p.waitForTimeout(1000);
   await p.getByRole('button', { name: 'Watch trailer' }).click(); await p.waitForTimeout(500);
