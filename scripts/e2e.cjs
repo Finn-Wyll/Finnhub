@@ -192,6 +192,21 @@ const assert = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 
   await p.goto(base + '/watch/movie/1004'); await p.waitForTimeout(500);
   await p.locator('button[aria-label="Play"]').first().click(); await p.waitForTimeout(2500);
   assert(await p.getByText('Not Available Right Now', { exact: true }).isVisible() && await p.getByRole('button', { name: 'Try Again' }).isVisible() && await p.getByRole('button', { name: 'Try VidFast' }).isVisible() && !(await p.getByText(/is playing it/).isVisible()), 'unavailable everywhere shows a clear message with a way to try the other source');
+  // A host that never answers (down): the player must not show Starting forever.
+  {
+    const hung = await b.newPage();
+    for (const h of ['https://vidfast.vc/**', 'https://vidcore.io/**']) {
+      await hung.route(h, (r) => { if (!r.request().url().includes('/movie/1005')) r.fulfill({ contentType: 'text/html', body: FAKE_VIDFAST }); /* else: never respond */ });
+    }
+    await hung.clock.install();
+    await hung.goto(base + '/watch/movie/1005'); await hung.waitForTimeout(800);
+    await hung.locator('button[aria-label="Play"]').first().click(); await hung.waitForTimeout(300);
+    await hung.clock.fastForward(26000); await hung.waitForTimeout(300);
+    const after1 = await hung.locator('iframe').getAttribute('src');
+    await hung.clock.fastForward(26000); await hung.waitForTimeout(300);
+    assert(after1.startsWith('https://vidcore.io/movie/1005?') && await hung.getByText('The Player Is Not Responding', { exact: true }).isVisible() && await hung.getByRole('button', { name: 'Try VidFast' }).isVisible(), 'a host that never answers falls back, then shows a retry instead of Starting forever');
+    await hung.close();
+  }
   // Manual source switch keeps the position
   await p.evaluate(() => sessionStorage.removeItem('finnhub.player.source'));
   await p.goto(base + '/watch/movie/1003'); await p.waitForTimeout(500);

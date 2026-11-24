@@ -63,8 +63,11 @@ const SUBTITLES = [
   { id: 'pt', label: 'Portuguese' },
 ] as const;
 
-/** A loaded embed that has not reported within this time is treated as stuck. */
-const NO_ANSWER_MS = 15000;
+/**
+ * An embed that has not reported within this time of starting is treated as stuck,
+ * whether or not its page ever loaded (a host that is down never fires the iframe's load).
+ */
+const NO_ANSWER_MS = 25000;
 /** Skips and scrubs that land within this window are combined into one reload. */
 const SEEK_SETTLE_MS = 600;
 
@@ -136,14 +139,12 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
   const [notice, setNotice] = useState<string | null>(null);
   const [pendingSeek, setPendingSeek] = useState<number | null>(null);
   const [problem, setProblem] = useState<'unavailable' | 'stuck' | null>(null);
-  const [loadedN, setLoadedN] = useState<number | null>(null);
   // The session whose embed has reported `play` at least once.
   const [playedN, setPlayedN] = useState<number | null>(null);
   const sessionRef = useRef(session.n);
   sessionRef.current = session.n;
 
   const src = vidfastUrl(type, id, season, episode, { sub, startAt: session.at, source });
-  const loaded = loadedN === session.n;
 
   const next = useMemo(() => nextEpisode(title, episodes, season, episode), [title, episodes, season, episode]);
   const nextHref = next ? `/watch/tv/${id}/${next.season}/${next.episode}` : null;
@@ -231,12 +232,13 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
   // Playing now, as reported; paused from the embed's own keys leaves the embed loaded.
   const playingNow = wantPlay && hasPlayed && status.playing;
 
-  // A loaded embed that never reports is stuck; offer a retry rather than leaving dead controls.
+  // An embed that never reports is stuck (slow, or its host is down): fall back or offer a retry
+  // rather than showing "Starting" forever.
   useEffect(() => {
-    if (!wantPlay || !loaded || status.ready || problem) return;
+    if (!wantPlay || status.ready || problem) return;
     const t = window.setTimeout(() => setProblem('stuck'), NO_ANSWER_MS);
     return () => window.clearTimeout(t);
-  }, [wantPlay, loaded, status.ready, problem, session.n]);
+  }, [wantPlay, status.ready, problem, session.n]);
 
   const [menu, setMenu] = useState<'captions' | 'source' | null>(null);
   const [sheet, setSheet] = useState(false);
@@ -504,7 +506,6 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
               src={src}
               // Focusable only by script (see keysInEmbed); never by Tab or pointer.
               tabIndex={-1}
-              onLoad={() => setLoadedN(session.n)}
               allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
               referrerPolicy="origin"
               className={`pointer-events-none absolute inset-0 size-full border-0 bg-black ${showing ? '' : 'opacity-0'}`}
@@ -612,7 +613,7 @@ function PlayerView({ type, id, season, episode }: { type: MediaType; id: number
             <p className="mt-1 text-sm text-white/70">
               {problem === 'unavailable'
                 ? `None of ${SOURCES[source].label}’s servers can play this title at the moment.`
-                : 'It may be slow to connect. Trying again usually helps.'}
+                : `${SOURCES[source].label} is not responding. It may be down for a while; trying again later usually helps.`}
             </p>
             <div className="mt-5 flex justify-center gap-3">
               <button
