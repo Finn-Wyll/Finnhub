@@ -1,6 +1,6 @@
-import { BookmarkSimple, FilmSlate, GearSix, House, MagnifyingGlass, Television } from '@phosphor-icons/react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { BookmarkSimple, FilmSlate, GearSix, House, MagnifyingGlass, Television, X } from '@phosphor-icons/react';
+import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
 import { Logo } from './Logo';
 import { IconButton } from './Button';
 
@@ -33,7 +33,8 @@ export function TopNav() {
       const target = e.target as HTMLElement;
       if (e.key === '/' && !/input|textarea|select/i.test(target.tagName) && !target.isContentEditable) {
         e.preventDefault();
-        navigate('/search');
+        // The nav search box when it is on screen (desktop), otherwise the search page.
+        if (!focusNavSearch()) navigate('/search');
       }
     };
     window.addEventListener('keydown', onKey);
@@ -84,20 +85,112 @@ export function TopNav() {
           ))}
         </ul>
         <div className="ml-auto flex items-center gap-2">
-          <NavLink
-            to="/search"
-            className="press glass hidden h-10 w-56 items-center gap-2 rounded-full px-4 text-sm text-text-2 hover:text-text md:flex"
-          >
-            <MagnifyingGlass size={16} aria-hidden />
-            <span>Search</span>
-            <kbd className="ml-auto rounded-md border border-line px-1.5 font-mono text-xs text-text-3">/</kbd>
-          </NavLink>
+          <NavSearch />
           <IconButton label="Settings" onClick={() => navigate('/settings')}>
             <GearSix size={18} aria-hidden />
           </IconButton>
         </div>
       </nav>
     </header>
+  );
+}
+
+export const NAV_SEARCH_ID = 'nav-search';
+
+/** Focus the nav search box if it is on screen. Returns false when it is hidden (small screens). */
+export function focusNavSearch(): boolean {
+  const el = document.getElementById(NAV_SEARCH_ID) as HTMLInputElement | null;
+  if (!el || el.offsetParent === null) return false;
+  el.focus({ preventScroll: true });
+  return true;
+}
+
+/**
+ * The desktop search box: a real input, so one click focuses it on any page.
+ * Typing takes you to /search and keeps the query in the URL (shareable, Back works).
+ * On small screens it is hidden and the search page has its own input.
+ */
+function NavSearch() {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const [params] = useSearchParams();
+  const onSearch = pathname === '/search';
+  const q = onSearch ? params.get('q') ?? '' : '';
+  const [text, setText] = useState(q);
+  const input = useRef<HTMLInputElement>(null);
+  // The query this box last wrote to the URL. Any other URL change (Back, a link, leaving
+  // the search page) is the URL moving underneath us, and the box follows it, even while focused;
+  // otherwise Back would be undone by the next debounce.
+  const written = useRef(q);
+  useEffect(() => {
+    if (q === written.current) return;
+    written.current = q;
+    setText(q);
+  }, [q]);
+
+  // Debounce typing into the URL. The first keystroke from another page pushes /search
+  // (so Back returns there); refinements replace.
+  useEffect(() => {
+    const trimmed = text.trim();
+    if (trimmed === q) return;
+    if (!onSearch && !trimmed) return;
+    const t = window.setTimeout(() => {
+      written.current = trimmed;
+      navigate(trimmed ? `/search?q=${encodeURIComponent(trimmed)}` : '/search', { replace: onSearch });
+    }, onSearch ? 250 : 120);
+    return () => window.clearTimeout(t);
+  }, [text, q, onSearch, navigate]);
+
+  return (
+    <form
+      role="search"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const trimmed = text.trim();
+        written.current = trimmed;
+        navigate(trimmed ? `/search?q=${encodeURIComponent(trimmed)}` : '/search', { replace: onSearch });
+      }}
+      className="glass nav-search group relative hidden h-10 w-64 items-center rounded-full text-sm transition-[border-color,box-shadow] duration-200 md:flex"
+    >
+      <MagnifyingGlass size={16} className="pointer-events-none absolute left-4 text-text-2" aria-hidden />
+      <input
+        id={NAV_SEARCH_ID}
+        ref={input}
+        type="search"
+        inputMode="search"
+        autoComplete="off"
+        spellCheck={false}
+        enterKeyHint="search"
+        aria-label="Search films, series and people"
+        placeholder="Search…"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            if (text) setText('');
+            else input.current?.blur();
+          }
+        }}
+        className="size-full rounded-full bg-transparent pl-10 pr-10 text-text outline-none placeholder:text-text-2 [&::-webkit-search-cancel-button]:hidden"
+      />
+      {text ? (
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={() => {
+            setText('');
+            input.current?.focus();
+          }}
+          className="press absolute right-1.5 grid size-7 place-items-center rounded-full text-text-2 hover:bg-surface-2 hover:text-text"
+        >
+          <X size={12} weight="bold" aria-hidden />
+        </button>
+      ) : (
+        <kbd className="pointer-events-none absolute right-3 rounded-md border border-line px-1.5 font-mono text-xs text-text-3 group-focus-within:opacity-0" aria-hidden>
+          /
+        </kbd>
+      )}
+    </form>
   );
 }
 

@@ -105,16 +105,22 @@ const assert = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 
   await p.mouse.wheel(0, 6000); await p.waitForTimeout(1200);
   const after = await p.locator('main a[href^="/title/"]').count();
   assert(after > before, `infinite scroll loads more (${before} -> ${after})`);
-  // Search
-  await p.goto(base + '/search'); await p.waitForTimeout(500);
-  await p.getByLabel(/Search films, series and people/).fill('golden'); await p.waitForTimeout(1200);
-  assert(p.url().includes('q=golden'), 'search query in URL');
+  // Search: the nav box is a real input, so one click focuses it on any page
+  await p.goto(base + '/movies'); await p.waitForTimeout(600);
+  await p.locator('#nav-search').click();
+  assert(await p.evaluate(() => document.activeElement?.id === 'nav-search'), 'one click focuses the nav search box');
+  await p.keyboard.type('golden'); await p.waitForTimeout(1200);
+  assert(p.url().includes('/search?q=golden') && await p.evaluate(() => document.activeElement?.id === 'nav-search'), 'typing searches and keeps focus');
   assert((await p.locator('main a[href^="/title/"]').count()) > 0, 'search results');
-  await p.getByLabel(/Search films, series and people/).fill('zzzzqq'); await p.waitForTimeout(1200);
+  await p.locator('#nav-search').fill('zzzzqq'); await p.waitForTimeout(1200);
   assert(await p.getByText('No results for').isVisible(), 'search empty state');
+  await p.mouse.click(640, 600); await p.locator('#nav-search').click();
+  assert(await p.evaluate(() => document.activeElement?.id === 'nav-search'), 'on the search page, one click focuses the box (was two)');
+  await p.goBack(); await p.waitForTimeout(600);
+  assert(new URL(p.url()).pathname === '/movies', 'Back leaves search and stays left');
   // Slash shortcut
   await p.goto(base + '/tv'); await p.waitForTimeout(600); await p.keyboard.press('/'); await p.waitForTimeout(400);
-  assert(p.url().endsWith('/search'), '/ shortcut opens search');
+  assert(await p.evaluate(() => document.activeElement?.id === 'nav-search'), '/ focuses the search box');
   // TV seasons + episode link
   await p.goto(base + '/title/tv/3003'); await p.waitForTimeout(1200);
   await p.getByLabel('Season').selectOption('2'); await p.waitForTimeout(800);

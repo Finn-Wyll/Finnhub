@@ -49,6 +49,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const root = document.documentElement;
     if (theme === 'system') root.removeAttribute('data-theme');
     else root.setAttribute('data-theme', theme);
+    // Keep the browser chrome (theme-color) matching a manually chosen theme, not just the system one.
+    const metas = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
+    metas.forEach((m) => {
+      if (!m.dataset.media) m.dataset.media = m.media;
+      const forDark = m.dataset.media.includes('dark');
+      m.media = theme === 'system' ? m.dataset.media : (theme === 'dark') === forDark ? 'all' : 'not all';
+    });
   }, [theme]);
 
   const value = useMemo<AppState>(

@@ -43,7 +43,7 @@ Leave `VITE_TMDB_API_KEY` unset for a public site so each visitor enters their o
 - **Films / Series:** genre chips, sort, infinite scroll. Filters live in the URL.
 - **Title page:** logo art, certification, runtime, genres, cast, crew facts, trailers and clips, recommendations, and for series a season picker with episode list.
 - **Person page:** biography and known-for credits.
-- **Search:** debounced multi-search (titles and people), shareable `?q=` URLs, `/` shortcut from anywhere.
+- **Search:** debounced multi-search (titles and people), shareable `?q=` URLs. On desktop the search box in the top bar is a real input: one click (or `/`) focuses it on any page, typing goes straight to results, Escape clears, and Back returns to where you searched from. Small screens use the Search tab, which has its own field.
 - **Watchlist:** stored locally and synced across tabs.
 - **Resume watching:** the player saves progress from VidFast's `MEDIA_DATA` messages and its own time reports (`src/core/progress.ts`, stored locally, synced across tabs). Films and episodes reopen where you stopped, with a Start Over option; the title page's Play button becomes Resume (or the next episode once one is finished), episode rows show progress, and Home has a Continue Watching rail with a remove button per card.
 - **Settings:** theme (system, dark, light) and TMDB key management.

@@ -7,6 +7,7 @@ import { Img } from '../components/Img';
 import { PosterCard, PosterSkeleton } from '../components/PosterCard';
 import { QueryRail } from '../components/QueryRail';
 import { EmptyState, ErrorState } from '../components/States';
+import { focusNavSearch } from '../components/Nav';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useQuery } from '../hooks/useQuery';
 import { GRID } from './Browse';
@@ -19,8 +20,15 @@ export default function Search() {
   const input = useRef<HTMLInputElement>(null);
   useDocumentTitle(q ? `Search: ${q}` : 'Search');
 
+  // Follow the URL when the nav search box (desktop) changes it.
   useEffect(() => {
-    // Autofocus only with a precise pointer, so phones do not pop the keyboard unasked.
+    if (document.activeElement !== input.current) setText(q);
+  }, [q]);
+
+  useEffect(() => {
+    // On desktop the nav search box is the search field; focus it unless it already has focus.
+    if (document.activeElement?.id === 'nav-search' || focusNavSearch()) return;
+    // Otherwise autofocus the page's own field, only with a precise pointer, so phones do not pop the keyboard unasked.
     if (window.matchMedia('(pointer: fine)').matches) input.current?.focus({ preventScroll: true });
   }, []);
 
@@ -41,7 +49,8 @@ export default function Search() {
 
   return (
     <div className="mx-auto max-w-[1600px] px-4 pb-24 pt-24 md:px-12 md:pt-28">
-      <h1 className="sr-only">Search</h1>
+      {/* Visible on desktop, where the search box lives in the nav; small screens have the field below as their label. */}
+      <h1 className="t-title1 sr-only md:not-sr-only">{q ? `Results for “${q}”` : 'Search'}</h1>
       <form
         role="search"
         onSubmit={(e) => {
@@ -49,7 +58,8 @@ export default function Search() {
           setParams(text.trim() ? { q: text.trim() } : {}, { replace: true });
           input.current?.blur();
         }}
-        className="relative max-w-2xl"
+        // On desktop the nav has the search box, so this one is for small screens only.
+        className="relative max-w-2xl md:hidden"
       >
         <label htmlFor="search-input" className="mb-2 block text-sm font-medium text-text-2">
           Search films, series and people
